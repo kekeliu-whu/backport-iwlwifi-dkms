@@ -1,0 +1,7 @@
+iwlwifi-dkms for Debian
+-----------------------
+
+This package is based on backport-iwlwifi[1] hosted on git.kernel.org
+and is packaged in deb format for Debian/Ubuntu users.
+
+[1]: https://git.kernel.org/pub/scm/linux/kernel/git/iwlwifi/backport-iwlwifi.git

@@ -1,0 +1,30 @@
+#!/usr/bin/make -f
+
+#export DH_VERBOSE = 1
+include /usr/share/dpkg/pkg-info.mk
+
+%:
+	dh $@ --with dkms,quilt
+
+override_dh_auto_configure:
+override_dh_auto_build:
+override_dh_auto_test:
+override_dh_auto_install:
+override_dh_auto_clean:
+
+override_dh_clean:
+	-rm -f debian/iwlwifi-dkms.dkms
+	-rm -f debian/iwlwifi-dkms.install
+	dh_clean
+
+override_dh_install: debian/iwlwifi-dkms.install
+	dh_install --exclude=.gitignore
+
+override_dh_dkms: debian/iwlwifi-dkms.dkms
+	dh_dkms -V $(DEB_VERSION_UPSTREAM)
+
+debian/iwlwifi-dkms.install: debian/iwlwifi-dkms.install.in
+	sed -e 's,@DEB_VERSION@,$(DEB_VERSION),g' <$< >$@
+
+debian/iwlwifi-dkms.dkms: debian/iwlwifi-dkms.dkms.in
+	sed -e 's,@DEB_VERSION_UPSTREAM@,$(DEB_VERSION_UPSTREAM),g' <$< >$@
