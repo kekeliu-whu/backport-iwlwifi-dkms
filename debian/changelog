@@ -1,3 +1,9 @@
+iwlwifi-dkms (7744-ubuntu1) UNRELEASED; urgency=low
+
+  * Close lp:1830822.
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Tue, 28 May 2019 15:53:12 +0800
+
 iwlwifi-dkms (7744) UNRELEASED; urgency=low
 
   * Initial release
