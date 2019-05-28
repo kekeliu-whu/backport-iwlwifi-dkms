@@ -1,0 +1,6 @@
+include:
+  - https://gitlab.com/vicamo/debian-pipeline/raw/master/salsa-ci.yml
+  - https://gitlab.com/vicamo/debian-pipeline/raw/master/salsa-ci-simple.yml
+
+variables:
+  SKIP_PREREQUISITES: 'yes'
