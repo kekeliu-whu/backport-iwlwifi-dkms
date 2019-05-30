@@ -24,7 +24,7 @@ override_dh_dkms: debian/iwlwifi-dkms.dkms
 	dh_dkms -V $(DEB_VERSION_UPSTREAM)
 
 debian/iwlwifi-dkms.install: debian/iwlwifi-dkms.install.in
-	sed -e 's,@DEB_VERSION@,$(DEB_VERSION),g' <$< >$@
+	sed -e 's,@DEB_VERSION_UPSTREAM@,$(DEB_VERSION_UPSTREAM),g' <$< >$@
 
 debian/iwlwifi-dkms.dkms: debian/iwlwifi-dkms.dkms.in
 	sed -e 's,@DEB_VERSION_UPSTREAM@,$(DEB_VERSION_UPSTREAM),g' <$< >$@

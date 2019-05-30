@@ -1,3 +1,9 @@
+iwlwifi-dkms (7744-ubuntu2) UNRELEASED; urgency=low
+
+  * Use DEB_VERSION_UPSTREAM for installed dkms source.
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Thu, 30 May 2019 16:02:20 +0800
+
 iwlwifi-dkms (7744-ubuntu1) UNRELEASED; urgency=low
 
   * Close lp:1830822.
