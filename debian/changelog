@@ -1,3 +1,12 @@
+iwlwifi-dkms (7744-ubuntu3) UNRELEASED; urgency=low
+
+  * sync with debian 7744+deb1.
+  * use CI definitions from salsa-ci-team/pipeline
+  * add dependency to libc-dev
+  * rewrite debian/rules a bit
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Thu, 30 May 2019 16:02:20 +0800
+
 iwlwifi-dkms (7744-ubuntu2) UNRELEASED; urgency=low
 
   * Use DEB_VERSION_UPSTREAM for installed dkms source.
