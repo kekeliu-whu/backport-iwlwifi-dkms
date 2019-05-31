@@ -1,6 +1,6 @@
 include:
-  - https://gitlab.com/vicamo/debian-pipeline/raw/master/salsa-ci.yml
-  - https://gitlab.com/vicamo/debian-pipeline/raw/master/salsa-ci-simple.yml
+  - https://salsa.debian.org/salsa-ci-team/pipeline/raw/master/salsa-ci.yml
+  - https://salsa.debian.org/salsa-ci-team/pipeline/raw/master/pipeline-jobs.yml
 
 variables:
-  SKIP_PREREQUISITES: 'yes'
+  RELEASE: 'unstable'
