@@ -15,6 +15,7 @@ Package: iwlwifi-dkms
 Architecture: all
 Depends:
  dkms,
+ libc6-dev | libc-dev,
  ${misc:Depends},
 Provides: iwlwifi-modules
 Description: iwlwifi driver backport in DKMS format
