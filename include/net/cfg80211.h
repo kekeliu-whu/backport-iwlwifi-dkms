@@ -5663,6 +5663,26 @@ void cfg80211_put_bss(struct wiphy *wiphy, struct cfg80211_bss *bss);
  */
 void cfg80211_unlink_bss(struct wiphy *wiphy, struct cfg80211_bss *bss);
 
+/**
+ * cfg80211_bss_iter - iterate all BSS entries
+ *
+ * This function iterates over the BSS entries associated with the given wiphy
+ * and calls the callback for the iterated BSS. The iterator function is not
+ * allowed to call functions that might modify the internal state of the BSS DB.
+ *
+ * @wiphy: the wiphy
+ * @chandef: if given, the iterator function will be called only if the channel
+ *     of the currently iterated BSS is a subset of the given channel.
+ * @iter: the iterator function to call
+ * @iter_data: an argument to the iterator function
+ */
+void cfg80211_bss_iter(struct wiphy *wiphy,
+		       struct cfg80211_chan_def *chandef,
+		       void (*iter)(struct wiphy *wiphy,
+				    struct cfg80211_bss *bss,
+				    void *data),
+		       void *iter_data);
+
 static inline enum nl80211_bss_scan_width
 cfg80211_chandef_to_scan_width(const struct cfg80211_chan_def *chandef)
 {
@@ -5712,10 +5732,12 @@ void cfg80211_auth_timeout(struct net_device *dev, const u8 *addr);
  * @dev: network device
  * @bss: the BSS that association was requested with, ownership of the pointer
  *	moves to cfg80211 in this call
- * @buf: authentication frame (header + body)
+ * @buf: (Re)Association Response frame (header + body)
  * @len: length of the frame data
  * @uapsd_queues: bitmap of queues configured for uapsd. Same format
  *	as the AC bitmap in the QoS info field
+ * @req_ies: information elements from the (Re)Association Request frame
+ * @req_ies_len: length of req_ies data
  *
  * After being asked to associate via cfg80211_ops::assoc() the driver must
  * call either this function or cfg80211_auth_timeout().
@@ -5725,7 +5747,8 @@ void cfg80211_auth_timeout(struct net_device *dev, const u8 *addr);
 void cfg80211_rx_assoc_resp(struct net_device *dev,
 			    struct cfg80211_bss *bss,
 			    const u8 *buf, size_t len,
-			    int uapsd_queues);
+			    int uapsd_queues,
+			    const u8 *req_ies, size_t req_ies_len);
 
 /**
  * cfg80211_assoc_timeout - notification of timed out association

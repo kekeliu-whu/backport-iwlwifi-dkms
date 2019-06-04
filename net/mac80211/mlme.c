@@ -644,7 +644,7 @@ static void ieee80211_send_assoc(struct ieee80211_sub_if_data *sdata)
 	struct ieee80211_mgd_assoc_data *assoc_data = ifmgd->assoc_data;
 	struct sk_buff *skb;
 	struct ieee80211_mgmt *mgmt;
-	u8 *pos, qos_info;
+	u8 *pos, qos_info, *ie_start;
 	size_t offset = 0, noffset;
 	int i, count, rates_len, supp_rates_len, shift;
 	u16 capab;
@@ -752,6 +752,7 @@ static void ieee80211_send_assoc(struct ieee80211_sub_if_data *sdata)
 
 	/* SSID */
 	pos = skb_put(skb, 2 + assoc_data->ssid_len);
+	ie_start = pos;
 	*pos++ = WLAN_EID_SSID;
 	*pos++ = assoc_data->ssid_len;
 	memcpy(pos, assoc_data->ssid, assoc_data->ssid_len);
@@ -975,6 +976,11 @@ static void ieee80211_send_assoc(struct ieee80211_sub_if_data *sdata)
 		dev_kfree_skb(skb);
 		return;
 	}
+
+	pos = skb_tail_pointer(skb);
+	kfree(ifmgd->assoc_req_ies);
+	ifmgd->assoc_req_ies = kmemdup(ie_start, pos - ie_start, GFP_ATOMIC);
+	ifmgd->assoc_req_ies_len = pos - ie_start;
 
 	drv_mgd_prepare_tx(local, sdata, 0);
 
@@ -2965,7 +2971,7 @@ static void ieee80211_rx_mgmt_auth(struct ieee80211_sub_if_data *sdata,
 #define case_WLAN(type) \
 	case WLAN_REASON_##type: return #type
 
-static const char *ieee80211_get_reason_code_string(u16 reason_code)
+const char *ieee80211_get_reason_code_string(u16 reason_code)
 {
 	switch (reason_code) {
 	case_WLAN(UNSPECIFIED);
@@ -3030,6 +3036,11 @@ static void ieee80211_rx_mgmt_deauth(struct ieee80211_sub_if_data *sdata,
 	if (len < 24 + 2)
 		return;
 
+	if (!ether_addr_equal(mgmt->bssid, mgmt->sa)) {
+		ieee80211_tdls_handle_disconnect(sdata, mgmt->sa, reason_code);
+		return;
+	}
+
 	if (ifmgd->associated &&
 	    ether_addr_equal(mgmt->bssid, ifmgd->associated->bssid)) {
 		const u8 *bssid = ifmgd->associated->bssid;
@@ -3078,6 +3089,11 @@ static void ieee80211_rx_mgmt_disassoc(struct ieee80211_sub_if_data *sdata,
 		return;
 
 	reason_code = le16_to_cpu(mgmt->u.disassoc.reason_code);
+
+	if (!ether_addr_equal(mgmt->bssid, mgmt->sa)) {
+		ieee80211_tdls_handle_disconnect(sdata, mgmt->sa, reason_code);
+		return;
+	}
 
 	sdata_info(sdata, "disassociated from %pM (Reason: %u=%s)\n",
 		   mgmt->sa, reason_code,
@@ -3587,7 +3603,8 @@ static void ieee80211_rx_mgmt_assoc_resp(struct ieee80211_sub_if_data *sdata,
 				uapsd_queues |= ieee80211_ac_to_qos_mask[ac];
 	}
 
-	cfg80211_rx_assoc_resp(sdata->dev, bss, (u8 *)mgmt, len, uapsd_queues);
+	cfg80211_rx_assoc_resp(sdata->dev, bss, (u8 *)mgmt, len, uapsd_queues,
+			       ifmgd->assoc_req_ies, ifmgd->assoc_req_ies_len);
 }
 
 static void ieee80211_rx_bss_info(struct ieee80211_sub_if_data *sdata,
@@ -4944,7 +4961,12 @@ static int ieee80211_prep_connection(struct ieee80211_sub_if_data *sdata,
 			basic_rates = BIT(min_rate_index);
 		}
 
-		new_sta->sta.supp_rates[cbss->channel->band] = rates;
+		if (rates)
+			new_sta->sta.supp_rates[cbss->channel->band] = rates;
+		else
+			sdata_info(sdata,
+				   "No rates found, keeping mandatory only\n");
+
 		sdata->vif.bss_conf.basic_rates = basic_rates;
 
 		/* cf. IEEE 802.11 9.2.12 */
@@ -5651,6 +5673,9 @@ void ieee80211_mgd_stop(struct ieee80211_sub_if_data *sdata)
 		ifmgd->teardown_skb = NULL;
 		ifmgd->orig_teardown_skb = NULL;
 	}
+	kfree(ifmgd->assoc_req_ies);
+	ifmgd->assoc_req_ies = NULL;
+	ifmgd->assoc_req_ies_len = 0;
 	spin_unlock_bh(&ifmgd->teardown_lock);
 	del_timer_sync(&ifmgd->timer);
 	sdata_unlock(sdata);

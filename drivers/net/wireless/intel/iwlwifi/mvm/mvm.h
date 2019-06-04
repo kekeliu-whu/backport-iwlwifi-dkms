@@ -511,6 +511,12 @@ struct iwl_mvm_vif {
 	netdev_features_t features;
 
 	struct iwl_probe_resp_data __rcu *probe_resp_data;
+
+	/* we can only have 2 GTK + 2 IGTK active at a time */
+	struct ieee80211_key_conf *ap_early_keys[4];
+
+	/* 26-tone RU OFDMA transmissions should be blocked */
+	bool he_ru_2mhz_block;
 };
 
 static inline struct iwl_mvm_vif *
@@ -942,7 +948,7 @@ struct iwl_mvm {
 	struct iwl_mvm_vif *bf_allowed_vif;
 
 	bool hw_registered;
-	bool calibrating;
+	bool rfkill_safe_init_done;
 	bool support_umac_log;
 
 	u32 ampdu_ref;
@@ -1100,8 +1106,6 @@ struct iwl_mvm {
 #ifdef CPTCFG_IWLWIFI_DEBUGFS
 	bool d3_wake_sysassert;
 	bool d3_test_active;
-	bool store_d3_resume_sram;
-	void *d3_resume_sram;
 	u32 d3_test_pme_ptr;
 	struct ieee80211_vif *keep_vif;
 	u32 last_netdetect_scans; /* no. of scans in the last net-detect wake */
@@ -1184,7 +1188,6 @@ struct iwl_mvm {
 	u8 ps_disabled; /* u8 instead of bool to ease debugfs_create_* usage */
 	/* Indicate if 32Khz external clock is valid */
 	u32 ext_clock_valid;
-	unsigned int max_amsdu_len; /* used for debugfs only */
 
 	struct ieee80211_vif __rcu *csa_vif;
 	struct ieee80211_vif __rcu *csa_tx_blocked_vif;
@@ -1269,12 +1272,17 @@ struct iwl_mvm {
 		u8 num_filter_addrs;
 	} csi_cfg;
 
-	/* we can have up to four chunks, plus the first notification */
-	struct iwl_csi_data_buffer csi_data_entries[5];
+	/* we store up to some number of chunks, plus the first notification */
+	struct iwl_csi_data_buffer csi_data_entries[IWL_CSI_MAX_EXPECTED_CHUNKS + 1];
 
 	unsigned int csi_portid;
 
 	struct list_head list;
+
+	/* move this out from vendor commands once there are other users */
+	struct {
+		u8 csi_notif;
+	} cmd_ver;
 #endif /* CPTCFG_IWLMVM_VENDOR_CMDS */
 
 	struct ieee80211_vif *nan_vif;
@@ -1303,6 +1311,7 @@ struct iwl_mvm {
 	u8 sar_chain_b_profile;
 #endif
 	struct iwl_mvm_geo_profile geo_profiles[ACPI_NUM_GEO_PROFILES];
+	u32 geo_rev;
 #endif
 
 };
@@ -1428,6 +1437,12 @@ static inline bool iwl_mvm_is_adaptive_dwell_v2_supported(struct iwl_mvm *mvm)
 {
 	return fw_has_api(&mvm->fw->ucode_capa,
 			  IWL_UCODE_TLV_API_ADAPTIVE_DWELL_V2);
+}
+
+static inline bool iwl_mvm_is_adwell_hb_ap_num_supported(struct iwl_mvm *mvm)
+{
+	return fw_has_api(&mvm->fw->ucode_capa,
+			  IWL_UCODE_TLV_API_ADWELL_HB_DEF_N_AP);
 }
 
 static inline bool iwl_mvm_is_oce_supported(struct iwl_mvm *mvm)
@@ -1572,6 +1587,12 @@ static inline bool iwl_mvm_cdb_scan_api(struct iwl_mvm *mvm)
 	return mvm->trans->cfg->device_family >= IWL_DEVICE_FAMILY_22000;
 }
 
+static inline bool iwl_mvm_is_reduced_config_scan_supported(struct iwl_mvm *mvm)
+{
+	return fw_has_api(&mvm->fw->ucode_capa,
+			  IWL_UCODE_TLV_API_REDUCED_SCAN_CONFIG);
+}
+
 static inline bool iwl_mvm_has_new_rx_stats_api(struct iwl_mvm *mvm)
 {
 	return fw_has_api(&mvm->fw->ucode_capa,
@@ -1655,6 +1676,7 @@ void iwl_mvm_hwrate_to_tx_rate(u32 rate_n_flags,
 			       enum nl80211_band band,
 			       struct ieee80211_tx_rate *r);
 u8 iwl_mvm_mac80211_idx_to_hwrate(int rate_idx);
+u8 iwl_mvm_mac80211_ac_to_ucode_ac(enum ieee80211_ac_numbers ac);
 void iwl_mvm_dump_nic_error_log(struct iwl_mvm *mvm);
 u8 first_antenna(u8 mask);
 u8 iwl_mvm_next_antenna(struct iwl_mvm *mvm, u8 valid, u8 last_idx);
@@ -2151,7 +2173,8 @@ static inline void iwl_mvm_stop_device(struct iwl_mvm *mvm)
 	lockdep_assert_held(&mvm->mutex);
 	iwl_fw_cancel_timestamp(&mvm->fwrt);
 	clear_bit(IWL_MVM_STATUS_FIRMWARE_RUNNING, &mvm->status);
-	iwl_fwrt_stop_device(&mvm->fwrt);
+	iwl_fw_dbg_stop_sync(&mvm->fwrt);
+	iwl_trans_stop_device(mvm->trans);
 	iwl_free_fw_paging(&mvm->fwrt);
 	iwl_fw_dump_conf_clear(&mvm->fwrt);
 }
