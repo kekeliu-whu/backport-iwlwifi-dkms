@@ -246,6 +246,12 @@ static const struct cfg80211_pmsr_capabilities iwl_mvm_pmsr_capa = {
 	},
 };
 
+static int iwl_mvm_mac_set_key(struct ieee80211_hw *hw,
+			       enum set_key_cmd cmd,
+			       struct ieee80211_vif *vif,
+			       struct ieee80211_sta *sta,
+			       struct ieee80211_key_conf *key);
+
 void iwl_mvm_ref(struct iwl_mvm *mvm, enum iwl_mvm_ref_type ref_type)
 {
 	if (!iwl_mvm_is_d0i3_supported(mvm))
@@ -1275,7 +1281,7 @@ static void iwl_mvm_restart_cleanup(struct iwl_mvm *mvm)
 
 	mvm->scan_status = 0;
 	mvm->ps_disabled = false;
-	mvm->calibrating = false;
+	mvm->rfkill_safe_init_done = false;
 
 #ifdef CPTCFG_IWLWIFI_FRQ_MGR
 	/*
@@ -1519,7 +1525,7 @@ static void iwl_mvm_mac_stop(struct ieee80211_hw *hw)
 	 */
 	clear_bit(IWL_MVM_STATUS_FIRMWARE_RUNNING, &mvm->status);
 
-	iwl_fw_cancel_dump(&mvm->fwrt);
+	iwl_fw_cancel_dumps(&mvm->fwrt);
 
 #ifdef CPTCFG_MAC80211_LATENCY_MEASUREMENTS
 	cancel_delayed_work_sync(&mvm->tx_latency_watchdog_wk);
@@ -2370,13 +2376,6 @@ static u8 iwl_mvm_he_get_ppe_val(u8 *ppe, u8 ppe_pos_bit)
 	return res;
 }
 
-static const u8 mac80211_ac_to_ucode_ac[] = {
-	AC_VO,
-	AC_VI,
-	AC_BE,
-	AC_BK
-};
-
 static void iwl_mvm_cfg_he_sta(struct iwl_mvm *mvm,
 			       struct ieee80211_vif *vif, u8 sta_id)
 {
@@ -2412,6 +2411,10 @@ static void iwl_mvm_cfg_he_sta(struct iwl_mvm *mvm,
 	}
 
 	flags = 0;
+
+	/* Block 26-tone RU OFDMA transmissions */
+	if (mvmvif->he_ru_2mhz_block)
+		flags |= STA_CTXT_HE_RU_2MHZ_BLOCK;
 
 	/* HTC flags */
 	if (sta->he_cap.he_cap_elem.mac_cap_info[0] &
@@ -2545,7 +2548,7 @@ static void iwl_mvm_cfg_he_sta(struct iwl_mvm *mvm,
 	for (i = 0; i < IEEE80211_NUM_ACS; i++) {
 		struct ieee80211_he_mu_edca_param_ac_rec *mu_edca =
 			&mvmvif->queue_params[i].mu_edca_param_rec;
-		u8 ac = mac80211_ac_to_ucode_ac[i];
+		u8 ac = iwl_mvm_mac80211_ac_to_ucode_ac(i);
 
 		if (!mvmvif->queue_params[i].mu_edca) {
 			flags &= ~STA_CTXT_HE_MU_EDCA_CW;
@@ -2839,7 +2842,7 @@ static int iwl_mvm_start_ap_ibss(struct ieee80211_hw *hw,
 {
 	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
 	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
-	int ret;
+	int ret, i;
 
 	/*
 	 * iwl_mvm_mac_ctxt_add() might read directly from the device
@@ -2916,6 +2919,20 @@ static int iwl_mvm_start_ap_ibss(struct ieee80211_hw *hw,
 
 	/* must be set before quota calculations */
 	mvmvif->ap_ibss_active = true;
+
+	/* send all the early keys to the device now */
+	for (i = 0; i < ARRAY_SIZE(mvmvif->ap_early_keys); i++) {
+		struct ieee80211_key_conf *key = mvmvif->ap_early_keys[i];
+
+		if (!key)
+			continue;
+
+		mvmvif->ap_early_keys[i] = NULL;
+
+		ret = iwl_mvm_mac_set_key(hw, SET_KEY, vif, NULL, key);
+		if (ret)
+			goto out_quota_failed;
+	}
 
 	if (vif->type == NL80211_IFTYPE_AP && !vif->p2p) {
 		iwl_mvm_vif_set_low_latency(mvmvif, true,
@@ -3379,6 +3396,51 @@ iwl_mvm_tdls_check_trigger(struct iwl_mvm *mvm,
 				peer_addr, action);
 }
 
+struct iwl_mvm_he_obss_narrow_bw_ru_data {
+	u32 n_bss;
+	bool tolerated;
+};
+
+static void iwl_mvm_check_he_obss_narrow_bw_ru_iter(struct wiphy *wiphy,
+						    struct cfg80211_bss *bss,
+						    void *_data)
+{
+	struct iwl_mvm_he_obss_narrow_bw_ru_data *data = _data;
+	const struct element *elem;
+
+	data->n_bss++;
+
+	elem = cfg80211_find_elem(WLAN_EID_EXT_CAPABILITY, bss->ies->data,
+				  bss->ies->len);
+
+	if (!elem || elem->datalen < 10 ||
+	    !(elem->data[10] &
+	      WLAN_EXT_CAPA10_OBSS_NARROW_BW_RU_TOLERANCE_SUPPORT)) {
+		data->tolerated = false;
+	}
+}
+
+static void iwl_mvm_check_he_obss_narrow_bw_ru(struct ieee80211_hw *hw,
+					       struct ieee80211_vif *vif)
+{
+	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
+	struct iwl_mvm_he_obss_narrow_bw_ru_data iter_data = {
+		.n_bss = 0,
+		.tolerated = true,
+	};
+
+	cfg80211_bss_iter(hw->wiphy, &vif->bss_conf.chandef,
+			  iwl_mvm_check_he_obss_narrow_bw_ru_iter,
+			  &iter_data);
+
+	/*
+	 * Block if there is no information on the neighboring BSSs, or there is
+	 * at least one AP that cannot tolerate 26-tone RU UL OFDMA
+	 * transmissions using HE TB PPDU.
+	 */
+	mvmvif->he_ru_2mhz_block = !iter_data.n_bss || !iter_data.tolerated;
+}
+
 static int iwl_mvm_mac_sta_state(struct ieee80211_hw *hw,
 				 struct ieee80211_vif *vif,
 				 struct ieee80211_sta *sta,
@@ -3480,6 +3542,11 @@ static int iwl_mvm_mac_sta_state(struct ieee80211_hw *hw,
 				iwl_mvm_cfg_he_sta(mvm, vif, mvm_sta->sta_id);
 		} else if (vif->type == NL80211_IFTYPE_STATION) {
 			vif->bss_conf.he_support = sta->he_cap.has_he;
+
+			mvmvif->he_ru_2mhz_block = false;
+			if (sta->he_cap.has_he)
+				iwl_mvm_check_he_obss_narrow_bw_ru(hw, vif);
+
 			iwl_mvm_mac_ctxt_changed(mvm, vif, false, NULL);
 		}
 
@@ -3686,11 +3753,12 @@ static int iwl_mvm_mac_set_key(struct ieee80211_hw *hw,
 			       struct ieee80211_sta *sta,
 			       struct ieee80211_key_conf *key)
 {
+	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
 	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
 	struct iwl_mvm_sta *mvmsta;
 	struct iwl_mvm_key_pn *ptk_pn;
 	int keyidx = key->keyidx;
-	int ret;
+	int ret, i;
 	u8 key_offset;
 
 	if (iwlwifi_mod_params.swcrypto) {
@@ -3763,6 +3831,22 @@ static int iwl_mvm_mac_set_key(struct ieee80211_hw *hw,
 				key->hw_key_idx = STA_KEY_IDX_INVALID;
 				break;
 			}
+
+			if (!mvmvif->ap_ibss_active) {
+				for (i = 0;
+				     i < ARRAY_SIZE(mvmvif->ap_early_keys);
+				     i++) {
+					if (!mvmvif->ap_early_keys[i]) {
+						mvmvif->ap_early_keys[i] = key;
+						break;
+					}
+				}
+
+				if (i >= ARRAY_SIZE(mvmvif->ap_early_keys))
+					ret = -ENOSPC;
+
+				break;
+			}
 		}
 
 		/* During FW restart, in order to restore the state as it was,
@@ -3831,6 +3915,18 @@ static int iwl_mvm_mac_set_key(struct ieee80211_hw *hw,
 
 		break;
 	case DISABLE_KEY:
+		ret = -ENOENT;
+		for (i = 0; i < ARRAY_SIZE(mvmvif->ap_early_keys); i++) {
+			if (mvmvif->ap_early_keys[i] == key) {
+				mvmvif->ap_early_keys[i] = NULL;
+				ret = 0;
+			}
+		}
+
+		/* found in pending list - don't do anything else */
+		if (ret == 0)
+			break;
+
 		if (key->hw_key_idx == STA_KEY_IDX_INVALID) {
 			ret = 0;
 			break;

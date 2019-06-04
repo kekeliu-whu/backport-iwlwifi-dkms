@@ -157,7 +157,7 @@ static bool iwl_alive_fn(struct iwl_notif_wait_data *notif_wait,
 			lmac2 = &palive4->lmac_data[1];
 			umac = &palive4->umac_data;
 			lmac2_err_ptr = lmac2->dbg_ptrs.error_event_table_ptr;
-			xvt->trans->lmac_error_event_table[1] =
+			xvt->trans->dbg.lmac_error_event_table[1] =
 				le32_to_cpu(lmac2_err_ptr);
 
 			IWL_DEBUG_FW(xvt, "Alive VER4 CDB\n");
@@ -261,7 +261,8 @@ static int iwl_xvt_load_ucode_wait_alive(struct iwl_xvt *xvt,
 	if (ret)
 		return ret;
 
-	if (ucode_type == IWL_UCODE_REGULAR) {
+	if (ucode_type == IWL_UCODE_REGULAR &&
+	    fw_has_capa(&xvt->fw->ucode_capa, IWL_UCODE_TLV_CAPA_DQA_SUPPORT)) {
 		ret = iwl_xvt_send_dqa_cmd(xvt);
 		if (ret)
 			return ret;
@@ -336,6 +337,7 @@ int iwl_xvt_run_fw(struct iwl_xvt *xvt, u32 ucode_type, bool cont_run)
 			if (xvt->fwrt.cur_fw_img == IWL_UCODE_REGULAR)
 				iwl_xvt_txq_disable(xvt);
 		}
+		iwl_fw_dbg_stop_sync(&xvt->fwrt);
 		_iwl_trans_stop_device(xvt->trans, !cont_run);
 	}
 
@@ -357,6 +359,7 @@ int iwl_xvt_run_fw(struct iwl_xvt *xvt, u32 ucode_type, bool cont_run)
 	ret = iwl_xvt_load_ucode_wait_alive(xvt, ucode_type);
 	if (ret) {
 		IWL_ERR(xvt, "Failed to start ucode: %d\n", ret);
+		iwl_fw_dbg_stop_sync(&xvt->fwrt);
 		iwl_trans_stop_device(xvt->trans);
 	}
 
@@ -365,6 +368,7 @@ int iwl_xvt_run_fw(struct iwl_xvt *xvt, u32 ucode_type, bool cont_run)
 		if (ret) {
 			IWL_ERR(xvt, "Failed to send extended_config: %d\n",
 				ret);
+			iwl_fw_dbg_stop_sync(&xvt->fwrt);
 			iwl_trans_stop_device(xvt->trans);
 			return ret;
 		}
