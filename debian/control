@@ -1,4 +1,4 @@
-Source: iwlwifi-dkms
+Source: backport-iwlwifi-dkms
 Section: kernel
 Priority: optional
 Maintainer: You-Sheng Yang <vicamo@gmail.com>
@@ -7,11 +7,11 @@ Build-Depends:
  dkms,
  quilt,
 Standards-Version: 4.3.0
-Homepage: https://gitlab.com/vicamo/iwlwifi-dkms
-Vcs-Browser: https://gitlab.com/vicamo/iwlwifi-dkms/tree/master
-Vcs-Git: https://gitlab.com/vicamo/iwlwifi-dkms.git
+Homepage: https://gitlab.com/vicamo/backport-iwlwifi-dkms
+Vcs-Browser: https://gitlab.com/vicamo/backport-iwlwifi-dkms/tree/master
+Vcs-Git: https://gitlab.com/vicamo/backport-iwlwifi-dkms.git
 
-Package: iwlwifi-dkms
+Package: backport-iwlwifi-dkms
 Architecture: all
 Depends:
  dkms,
