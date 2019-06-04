@@ -3,11 +3,11 @@
 #export DH_VERBOSE = 1
 include /usr/share/dpkg/pkg-info.mk
 
-DKMS_PACKAGE_NAME=iwlwifi-backport
+DKMS_PACKAGE_NAME=backport-iwlwifi
 DKMS_PACKAGE_VERSION=$(DEB_VERSION_UPSTREAM)
 GENERATED_DKMS_FILES= \
-    debian/iwlwifi-dkms.install \
-    debian/iwlwifi-dkms.dkms
+    debian/backport-iwlwifi-dkms.install \
+    debian/backport-iwlwifi-dkms.dkms
 
 %:
 	dh $@ --with dkms,quilt
@@ -22,10 +22,10 @@ override_dh_clean:
 	-rm -f $(GENERATED_DKMS_FILES)
 	dh_clean
 
-override_dh_install: debian/iwlwifi-dkms.install
+override_dh_install: debian/backport-iwlwifi-dkms.install
 	dh_install --exclude=.gitignore
 
-override_dh_dkms: debian/iwlwifi-dkms.dkms
+override_dh_dkms: debian/backport-iwlwifi-dkms.dkms
 	dh_dkms -V $(DKMS_PACKAGE_VERSION)
 
 $(GENERATED_DKMS_FILES) : $(GENERATED_DKMS_FILES:=.in) debian/rules
