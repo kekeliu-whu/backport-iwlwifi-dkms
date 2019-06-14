@@ -1451,7 +1451,8 @@ int iwl_mvm_up(struct iwl_mvm *mvm)
 	iwl_mvm_tt_tx_backoff(mvm, 0);
 #endif
 
-	WARN_ON(iwl_mvm_config_ltr(mvm));
+	if (!fw_has_capa(&mvm->fw->ucode_capa, IWL_UCODE_TLV_CAPA_SET_LTR_GEN2))
+		WARN_ON(iwl_mvm_config_ltr(mvm));
 
 	ret = iwl_mvm_power_update_device(mvm);
 	if (ret)
@@ -1474,10 +1475,6 @@ int iwl_mvm_up(struct iwl_mvm *mvm)
 		if (ret)
 			goto error;
 	}
-
-	/* allow FW/transport low power modes if not during restart */
-	if (!test_bit(IWL_MVM_STATUS_IN_HW_RESTART, &mvm->status))
-		iwl_mvm_unref(mvm, IWL_MVM_REF_UCODE_DOWN);
 
 	if (test_bit(IWL_MVM_STATUS_IN_HW_RESTART, &mvm->status))
 		iwl_mvm_send_recovery_cmd(mvm, ERROR_RECOVERY_UPDATE_DB);

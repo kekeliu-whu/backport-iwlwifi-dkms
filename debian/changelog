@@ -1,3 +1,9 @@
+backport-iwlwifi-dkms (7841-ubuntu1) UNRELEASED; urgency=low
+
+  * sync with debian 7841.
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Fri, 14 Jun 2019 18:14:21 +0800
+
 backport-iwlwifi-dkms (7815-ubuntu1) UNRELEASED; urgency=low
 
   * sync with debian 7815.
