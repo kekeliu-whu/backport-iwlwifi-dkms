@@ -1,3 +1,9 @@
+backport-iwlwifi-dkms (7841) UNRELEASED; urgency=low
+
+  * Sync with upstream HEAD commit 14c78ca39703.
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Fri, 14 Jun 2019 16:53:37 +0800
+
 backport-iwlwifi-dkms (7815) UNRELEASED; urgency=low
 
   * Sync with upstream HEAD commit 92b69009eae2.
