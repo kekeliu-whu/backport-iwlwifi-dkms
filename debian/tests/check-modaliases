@@ -1,0 +1,14 @@
+#!/bin/sh
+# Generate and check module aliases.
+# Author: You-Sheng Yang <vicamo.yang@canonical.com>
+# Copyright: (C) 2019 Canonical Ltd.
+
+set -eu
+
+TMPFILE=$(mktemp)
+for fname in $(find /lib/modules -type f -name \*.ko | sort);
+do
+  /sbin/modinfo ${fname} | perl -nae "print \"alias \$1 $(basename --suffix=.ko ${fname})\\n\" if /^alias:\\s+(.*)\$/";
+done > "${TMPFILE}"
+
+diff -Nu debian/backport-iwlwifi-dkms.modaliases "${TMPFILE}"
