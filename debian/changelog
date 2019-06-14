@@ -1,3 +1,9 @@
+backport-iwlwifi-dkms (7841-ubuntu2) UNRELEASED; urgency=low
+
+  * add modalias support.
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Fri, 14 Jun 2019 19:34:47 +0800
+
 backport-iwlwifi-dkms (7841-ubuntu1) UNRELEASED; urgency=low
 
   * sync with debian 7841.
