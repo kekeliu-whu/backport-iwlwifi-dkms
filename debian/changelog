@@ -1,3 +1,12 @@
+backport-iwlwifi-dkms (7815-ubuntu1) UNRELEASED; urgency=low
+
+  * sync with debian 7815.
+  * drop
+    0001-UBUNTU-SAUCE-iwlwifi-trans-fix-killer-series-loadded-incor.patch:
+    this has been fixed by upstream commit f9c164492c3a.
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Fri, 14 Jun 2019 17:57:17 +0800
+
 backport-iwlwifi-dkms (7744-ubuntu3) UNRELEASED; urgency=low
 
   * sync with debian 7744+deb1.

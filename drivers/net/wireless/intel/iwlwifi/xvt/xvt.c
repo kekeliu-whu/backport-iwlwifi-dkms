@@ -125,6 +125,7 @@ static const struct iwl_hcmd_names iwl_xvt_cmd_names[] = {
 	HCMD_NAME(BA_NOTIF),
 	HCMD_NAME(DTS_MEASUREMENT_NOTIFICATION),
 	HCMD_NAME(REPLY_DEBUG_XVT_CMD),
+	HCMD_NAME(LDBG_CONFIG_CMD),
 	HCMD_NAME(DEBUG_LOG_MSG),
 };
 
@@ -187,6 +188,10 @@ static const struct iwl_hcmd_names iwl_xvt_xvt_names[] = {
 	HCMD_NAME(IQ_CALIB_CONFIG_NOTIF),
 };
 
+static const struct iwl_hcmd_names iwl_xvt_debug_names[] = {
+	HCMD_NAME(DBGC_SUSPEND_RESUME),
+};
+
 static const struct iwl_hcmd_arr iwl_xvt_cmd_groups[] = {
 	[LEGACY_GROUP] = HCMD_ARR(iwl_xvt_cmd_names),
 	[LONG_GROUP] = HCMD_ARR(iwl_xvt_long_cmd_names),
@@ -196,6 +201,7 @@ static const struct iwl_hcmd_arr iwl_xvt_cmd_groups[] = {
 	[LOCATION_GROUP] = HCMD_ARR(iwl_xvt_location_names),
 	[REGULATORY_AND_NVM_GROUP] = HCMD_ARR(iwl_xvt_regulatory_and_nvm_names),
 	[XVT_GROUP] = HCMD_ARR(iwl_xvt_xvt_names),
+	[DEBUG_GROUP] = HCMD_ARR(iwl_xvt_debug_names),
 };
 
 static int iwl_xvt_tm_send_hcmd(void *op_mode, struct iwl_host_cmd *host_cmd)
@@ -318,11 +324,11 @@ static struct iwl_op_mode *iwl_xvt_start(struct iwl_trans *trans,
 	memset(xvt->queue_data, 0, sizeof(xvt->queue_data));
 	init_waitqueue_head(&xvt->tx_done_wq);
 
-	trans->dbg_dest_tlv = xvt->fw->dbg.dest_tlv;
-	trans->dbg_n_dest_reg = xvt->fw->dbg.n_dest_reg;
-	memcpy(trans->dbg_conf_tlv, xvt->fw->dbg.conf_tlv,
-	       sizeof(trans->dbg_conf_tlv));
-	trans->dbg_trigger_tlv = xvt->fw->dbg.trigger_tlv;
+	trans->dbg.dest_tlv = xvt->fw->dbg.dest_tlv;
+	trans->dbg.n_dest_reg = xvt->fw->dbg.n_dest_reg;
+	memcpy(trans->dbg.conf_tlv, xvt->fw->dbg.conf_tlv,
+	       sizeof(trans->dbg.conf_tlv));
+	trans->dbg.trigger_tlv = xvt->fw->dbg.trigger_tlv;
 
 	IWL_INFO(xvt, "Detected %s, REV=0x%X, xVT operation mode\n",
 		 xvt->cfg->name, xvt->trans->hw_rev);
@@ -351,6 +357,7 @@ static void iwl_xvt_stop(struct iwl_op_mode *op_mode)
 			iwl_xvt_txq_disable(xvt);
 			xvt->fw_running = false;
 		}
+		iwl_fw_dbg_stop_sync(&xvt->fwrt);
 		iwl_trans_stop_device(xvt->trans);
 	}
 
@@ -641,7 +648,7 @@ static void iwl_xvt_nic_error(struct iwl_op_mode *op_mode)
 	table_size = sizeof(table_v2);
 
 	if (xvt->support_umac_log ||
-	    (xvt->trans->error_event_table_tlv_status &
+	    (xvt->trans->dbg.error_event_table_tlv_status &
 	     IWL_ERROR_EVENT_TABLE_UMAC)) {
 		iwl_xvt_get_umac_error_log(xvt, &table_umac);
 		iwl_xvt_dump_umac_error_log(xvt, &table_umac);
