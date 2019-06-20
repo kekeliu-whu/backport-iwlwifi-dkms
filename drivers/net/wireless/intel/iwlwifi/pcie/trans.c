@@ -69,7 +69,6 @@
 #include <linux/bitops.h>
 #include <linux/gfp.h>
 #include <linux/vmalloc.h>
-#include <linux/pm_runtime.h>
 #include <linux/module.h>
 #include <linux/wait.h>
 
@@ -1279,7 +1278,7 @@ static void iwl_pcie_init_msix(struct iwl_trans_pcie *trans_pcie)
 	trans_pcie->hw_mask = trans_pcie->hw_init_mask;
 }
 
-static void _iwl_trans_pcie_stop_device(struct iwl_trans *trans, bool low_power)
+static void _iwl_trans_pcie_stop_device(struct iwl_trans *trans)
 {
 	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
 
@@ -1495,7 +1494,7 @@ void iwl_trans_pcie_handle_stop_rfkill(struct iwl_trans *trans,
 		iwl_trans_pcie_rf_kill(trans, hw_rfkill);
 }
 
-static void iwl_trans_pcie_stop_device(struct iwl_trans *trans, bool low_power)
+static void iwl_trans_pcie_stop_device(struct iwl_trans *trans)
 {
 	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
 	bool was_in_rfkill;
@@ -1503,7 +1502,7 @@ static void iwl_trans_pcie_stop_device(struct iwl_trans *trans, bool low_power)
 	mutex_lock(&trans_pcie->mutex);
 	trans_pcie->opmode_down = true;
 	was_in_rfkill = test_bit(STATUS_RFKILL_OPMODE, &trans->status);
-	_iwl_trans_pcie_stop_device(trans, low_power);
+	_iwl_trans_pcie_stop_device(trans);
 	iwl_trans_pcie_handle_stop_rfkill(trans, was_in_rfkill);
 	mutex_unlock(&trans_pcie->mutex);
 }
@@ -1519,9 +1518,9 @@ void iwl_trans_pcie_rf_kill(struct iwl_trans *trans, bool state)
 		 state ? "disabled" : "enabled");
 	if (iwl_op_mode_hw_rf_kill(trans->op_mode, state)) {
 		if (trans->cfg->gen2)
-			_iwl_trans_pcie_gen2_stop_device(trans, true);
+			_iwl_trans_pcie_gen2_stop_device(trans);
 		else
-			_iwl_trans_pcie_stop_device(trans, true);
+			_iwl_trans_pcie_stop_device(trans);
 	}
 }
 
@@ -1780,7 +1779,7 @@ static int iwl_trans_pcie_clear_persistence_bit(struct iwl_trans *trans)
 	return 0;
 }
 
-static int _iwl_trans_pcie_start_hw(struct iwl_trans *trans, bool low_power)
+static int _iwl_trans_pcie_start_hw(struct iwl_trans *trans)
 {
 	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
 	int err;
@@ -1816,20 +1815,16 @@ static int _iwl_trans_pcie_start_hw(struct iwl_trans *trans, bool low_power)
 	/* ...rfkill can call stop_device and set it false if needed */
 	iwl_pcie_check_hw_rf_kill(trans);
 
-	/* Make sure we sync here, because we'll need full access later */
-	if (low_power)
-		pm_runtime_resume(trans->dev);
-
 	return 0;
 }
 
-static int iwl_trans_pcie_start_hw(struct iwl_trans *trans, bool low_power)
+static int iwl_trans_pcie_start_hw(struct iwl_trans *trans)
 {
 	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
 	int ret;
 
 	mutex_lock(&trans_pcie->mutex);
-	ret = _iwl_trans_pcie_start_hw(trans, low_power);
+	ret = _iwl_trans_pcie_start_hw(trans);
 	mutex_unlock(&trans_pcie->mutex);
 
 	return ret;
@@ -2411,41 +2406,6 @@ static void iwl_trans_pcie_set_bits_mask(struct iwl_trans *trans, u32 reg,
 	spin_lock_irqsave(&trans_pcie->reg_lock, flags);
 	__iwl_trans_pcie_set_bits_mask(trans, reg, mask, value);
 	spin_unlock_irqrestore(&trans_pcie->reg_lock, flags);
-}
-
-static void iwl_trans_pcie_ref(struct iwl_trans *trans)
-{
-	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
-
-	if (iwlwifi_mod_params.d0i3_disable)
-		return;
-
-	pm_runtime_get(&trans_pcie->pci_dev->dev);
-
-#ifdef CONFIG_PM
-#if (defined(CONFIG_PM_RUNTIME) || LINUX_VERSION_CODE >= KERNEL_VERSION(3,19,0))
-	IWL_DEBUG_RPM(trans, "runtime usage count: %d\n",
-		      atomic_read(&trans_pcie->pci_dev->dev.power.usage_count));
-#endif
-#endif /* CONFIG_PM */
-}
-
-static void iwl_trans_pcie_unref(struct iwl_trans *trans)
-{
-	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
-
-	if (iwlwifi_mod_params.d0i3_disable)
-		return;
-
-	pm_runtime_mark_last_busy(&trans_pcie->pci_dev->dev);
-	pm_runtime_put_autosuspend(&trans_pcie->pci_dev->dev);
-
-#ifdef CONFIG_PM
-#if (defined(CONFIG_PM_RUNTIME) || LINUX_VERSION_CODE >= KERNEL_VERSION(3,19,0))
-	IWL_DEBUG_RPM(trans, "runtime usage count: %d\n",
-		      atomic_read(&trans_pcie->pci_dev->dev.power.usage_count));
-#endif
-#endif /* CONFIG_PM */
 }
 
 static const char *get_csr_string(int cmd)
@@ -3369,18 +3329,11 @@ static struct iwl_trans_dump_data
 #ifdef CONFIG_PM_SLEEP
 static int iwl_trans_pcie_suspend(struct iwl_trans *trans)
 {
-	if (trans->runtime_pm_mode == IWL_PLAT_PM_MODE_D0I3 &&
-	    (trans->system_pm_mode == IWL_PLAT_PM_MODE_D0I3))
-		return iwl_pci_fw_enter_d0i3(trans);
-
 	return 0;
 }
 
 static void iwl_trans_pcie_resume(struct iwl_trans *trans)
 {
-	if (trans->runtime_pm_mode == IWL_PLAT_PM_MODE_D0I3 &&
-	    (trans->system_pm_mode == IWL_PLAT_PM_MODE_D0I3))
-		iwl_pci_fw_exit_d0i3(trans);
 }
 #endif /* CONFIG_PM_SLEEP */
 
@@ -3399,8 +3352,6 @@ static void iwl_trans_pcie_resume(struct iwl_trans *trans)
 	.grab_nic_access = iwl_trans_pcie_grab_nic_access,		\
 	.release_nic_access = iwl_trans_pcie_release_nic_access,	\
 	.set_bits_mask = iwl_trans_pcie_set_bits_mask,			\
-	.ref = iwl_trans_pcie_ref,					\
-	.unref = iwl_trans_pcie_unref,					\
 	.dump_data = iwl_trans_pcie_dump_data,				\
 	.d3_suspend = iwl_trans_pcie_d3_suspend,			\
 	.d3_resume = iwl_trans_pcie_d3_resume,				\
@@ -3453,6 +3404,8 @@ static const struct iwl_trans_ops trans_ops_pcie_gen2 = {
 
 	.tx = iwl_trans_pcie_gen2_tx,
 	.reclaim = iwl_trans_pcie_reclaim,
+
+	.set_q_ptrs = iwl_trans_pcie_set_q_ptrs,
 
 	.txq_alloc = iwl_trans_pcie_dyn_txq_alloc,
 	.txq_free = iwl_trans_pcie_dyn_txq_free,
@@ -3722,8 +3675,6 @@ struct iwl_trans *iwl_trans_pcie_alloc(struct pci_dev *pdev,
 	/* Initialize the wait queue for commands */
 	init_waitqueue_head(&trans_pcie->wait_command_queue);
 
-	init_waitqueue_head(&trans_pcie->d0i3_waitq);
-
 	if (trans_pcie->msix_enabled) {
 		ret = iwl_pcie_init_msix_handler(pdev, trans_pcie);
 		if (ret)
@@ -3747,8 +3698,6 @@ struct iwl_trans *iwl_trans_pcie_alloc(struct pci_dev *pdev,
 	trans_pcie->rba.alloc_wq = alloc_workqueue("rb_allocator",
 						   WQ_HIGHPRI | WQ_UNBOUND, 1);
 	INIT_WORK(&trans_pcie->rba.rx_alloc, iwl_pcie_rx_allocator_work);
-
-	trans->runtime_pm_mode = IWL_PLAT_PM_MODE_DISABLED;
 
 #ifdef CPTCFG_IWLWIFI_DEBUGFS
 	trans_pcie->fw_mon_data.state = IWL_FW_MON_DBGFS_STATE_CLOSED;

@@ -399,21 +399,12 @@ static const struct iwl_hcmd_names iwl_mvm_legacy_names[] = {
 	HCMD_NAME(TIME_QUOTA_CMD),
 	HCMD_NAME(NON_QOS_TX_COUNTER_CMD),
 	HCMD_NAME(LEDS_CMD),
-#ifdef CPTCFG_IWLWIFI_LTE_COEX
-	HCMD_NAME(LTE_COEX_CONFIG_CMD),
-	HCMD_NAME(LTE_COEX_WIFI_REPORTED_CHANNEL_CMD),
-	HCMD_NAME(LTE_COEX_STATIC_PARAMS_CMD),
-	HCMD_NAME(LTE_COEX_SPS_CMD),
-#endif
 	HCMD_NAME(LQ_CMD),
 	HCMD_NAME(FW_PAGING_BLOCK_CMD),
 	HCMD_NAME(SCAN_OFFLOAD_REQUEST_CMD),
 	HCMD_NAME(SCAN_OFFLOAD_ABORT_CMD),
 	HCMD_NAME(HOT_SPOT_CMD),
 	HCMD_NAME(SCAN_OFFLOAD_PROFILES_QUERY_CMD),
-#ifdef CPTCFG_IWLWIFI_LTE_COEX
-	HCMD_NAME(LTE_COEX_FINE_TUNING_PARAMS_CMD),
-#endif
 	HCMD_NAME(BT_COEX_UPDATE_REDUCED_TXP),
 	HCMD_NAME(BT_COEX_CI),
 	HCMD_NAME(PHY_CONFIGURATION_CMD),
@@ -1024,12 +1015,6 @@ iwl_op_mode_mvm_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 	else
 		memset(&mvm->rx_stats, 0, sizeof(struct mvm_statistics_rx));
 
-#ifdef CPTCFG_IWLWIFI_FRQ_MGR
-	err = iwl_mvm_fm_register(mvm);
-	if (err)
-		pr_err("Unable to register with Frequency Manager: %d\n", err);
-#endif
-
 #ifdef CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES
 	iwl_mvm_init_modparams(mvm);
 #endif
@@ -1065,10 +1050,6 @@ static void iwl_op_mode_mvm_stop(struct iwl_op_mode *op_mode)
 	iwl_mvm_thermal_exit(mvm);
 
 	ieee80211_unregister_hw(mvm->hw);
-
-#ifdef CPTCFG_IWLWIFI_FRQ_MGR
-	iwl_mvm_fm_unregister(mvm);
-#endif
 
 	kfree(mvm->scan_cmd);
 	kfree(mvm->mcast_filter_cmd);
