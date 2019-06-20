@@ -89,10 +89,6 @@
 #include "fw/acpi.h"
 #include "iwl-nvm-parse.h"
 
-#ifdef CPTCFG_IWLWIFI_LTE_COEX
-#include "lte-coex.h"
-#endif
-
 #include <linux/average.h>
 
 #define IWL_MVM_MAX_ADDRESSES		5
@@ -162,10 +158,6 @@ struct iwl_mvm_phy_ctxt {
 	 */
 	struct ieee80211_channel *channel;
 
-#ifdef CPTCFG_IWLWIFI_FRQ_MGR
-	/* Frequency Manager tx power limit*/
-	s8 fm_tx_power_limit;
-#endif
 };
 
 struct iwl_mvm_time_event_data {
@@ -597,24 +589,6 @@ struct iwl_mvm_frame_stats {
 	u32 last_rates[IWL_MVM_NUM_LAST_FRAMES_UCODE_RATES];
 	int last_frame_idx;
 };
-
-#ifdef CPTCFG_IWLWIFI_LTE_COEX
-struct lte_coex_state {
-	u8 state;
-
-	bool has_static;
-	bool has_config;
-	bool has_sps;
-	bool has_rprtd_chan;
-	bool has_ft;
-
-	struct iwl_lte_coex_static_params_cmd stat;
-	struct iwl_lte_coex_config_cmd config;
-	struct iwl_lte_coex_sps_cmd sps;
-	struct iwl_lte_coex_wifi_reported_channel_cmd rprtd_chan;
-	struct iwl_lte_coex_fine_tuning_params_cmd ft;
-};
-#endif
 
 #define IWL_MVM_DEBUG_SET_TEMPERATURE_DISABLE 0xff
 #define IWL_MVM_DEBUG_SET_TEMPERATURE_MIN -100
@@ -1062,6 +1036,7 @@ struct iwl_mvm {
 	struct ieee80211_channel **nd_channels;
 	int n_nd_channels;
 	bool net_detect;
+	u8 offload_tid;
 #ifdef CPTCFG_IWLWIFI_DEBUGFS
 	bool d3_wake_sysassert;
 	bool d3_test_active;
@@ -1080,17 +1055,9 @@ struct iwl_mvm {
 	u8 bt_tx_prio;
 	enum iwl_bt_force_ant_mode bt_force_ant_mode;
 
-#ifdef CPTCFG_IWLWIFI_LTE_COEX
-	/* LTE-Coex */
-	struct lte_coex_state lte_state;
-#endif
 	/* Aux ROC */
 	struct list_head aux_roc_te_list;
 
-#ifdef CPTCFG_IWLWIFI_FRQ_MGR
-	/* 2G-Coex */
-	bool coex_2g_enabled;
-#endif
 	/* Thermal Throttling and CTkill */
 	struct iwl_mvm_tt_mgmt thermal_throttle;
 #ifdef CONFIG_THERMAL
@@ -1519,6 +1486,12 @@ static inline bool iwl_mvm_is_reduced_config_scan_supported(struct iwl_mvm *mvm)
 			  IWL_UCODE_TLV_API_REDUCED_SCAN_CONFIG);
 }
 
+static inline bool iwl_mvm_is_scan_ext_chan_supported(struct iwl_mvm *mvm)
+{
+	return fw_has_api(&mvm->fw->ucode_capa,
+			  IWL_UCODE_TLV_API_SCAN_EXT_CHAN_VER);
+}
+
 static inline bool iwl_mvm_has_new_rx_stats_api(struct iwl_mvm *mvm)
 {
 	return fw_has_api(&mvm->fw->ucode_capa,
@@ -1548,7 +1521,6 @@ iwl_mvm_get_agg_status(struct iwl_mvm *mvm, void *tx_resp)
 
 static inline bool iwl_mvm_is_tt_in_fw(struct iwl_mvm *mvm)
 {
-#ifdef CONFIG_THERMAL
 	/* these two TLV are redundant since the responsibility to CT-kill by
 	 * FW happens only after we send at least one command of
 	 * temperature THs report.
@@ -1557,9 +1529,6 @@ static inline bool iwl_mvm_is_tt_in_fw(struct iwl_mvm *mvm)
 			   IWL_UCODE_TLV_CAPA_CT_KILL_BY_FW) &&
 	       fw_has_capa(&mvm->fw->ucode_capa,
 			   IWL_UCODE_TLV_CAPA_TEMP_THS_REPORT_SUPPORT);
-#else /* CONFIG_THERMAL */
-	return false;
-#endif /* CONFIG_THERMAL */
 }
 
 static inline bool iwl_mvm_is_ctdp_supported(struct iwl_mvm *mvm)
@@ -2087,27 +2056,6 @@ void iwl_mvm_enter_ctkill(struct iwl_mvm *mvm);
 int iwl_mvm_send_temp_report_ths_cmd(struct iwl_mvm *mvm);
 int iwl_mvm_ctdp_command(struct iwl_mvm *mvm, u32 op, u32 budget);
 
-#ifdef CPTCFG_IWLWIFI_FRQ_MGR
-/* Frequency Manager */
-#define FM_2G_COEX_ENABLE_DISABLE 0xFFFFFFFF
-#define FM_2G_COEX_ENABLE -100
-#define FM_2G_COEX_DISABLE 25
-
-enum iwl_fm_chan_change_action {
-	IWL_FM_ADD_CHANCTX = 0,
-	IWL_FM_REMOVE_CHANCTX = 1,
-	IWL_FM_CHANGE_CHANCTX = 2,
-};
-
-int iwl_mvm_fm_set_tx_power(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
-			    s8 txpower);
-void iwl_mvm_fm_notify_channel_change(struct ieee80211_chanctx_conf *ctx,
-				      enum iwl_fm_chan_change_action action);
-void iwl_mvm_fm_notify_current_dcdc(void);
-int iwl_mvm_fm_register(struct iwl_mvm *mvm);
-int iwl_mvm_fm_unregister(struct iwl_mvm *mvm);
-#endif
-
 /* Location Aware Regulatory */
 struct iwl_mcc_update_resp *
 iwl_mvm_update_mcc(struct iwl_mvm *mvm, const char *alpha2,
@@ -2204,16 +2152,6 @@ void iwl_mvm_resume_tcm(struct iwl_mvm *mvm);
 void iwl_mvm_tcm_add_vif(struct iwl_mvm *mvm, struct ieee80211_vif *vif);
 void iwl_mvm_tcm_rm_vif(struct iwl_mvm *mvm, struct ieee80211_vif *vif);
 u8 iwl_mvm_tcm_load_percentage(u32 airtime, u32 elapsed);
-
-#ifdef CPTCFG_IWLWIFI_LTE_COEX
-int iwl_mvm_send_lte_coex_static_params_cmd(struct iwl_mvm *mvm);
-int iwl_mvm_send_lte_coex_config_cmd(struct iwl_mvm *mvm);
-int iwl_mvm_send_lte_coex_wifi_reported_channel_cmd(struct iwl_mvm *mvm);
-int iwl_mvm_send_lte_sps_cmd(struct iwl_mvm *mvm);
-int iwl_mvm_send_lte_fine_tuning_params_cmd(struct iwl_mvm *mvm);
-void iwl_mvm_reset_lte_state(struct iwl_mvm *mvm);
-void iwl_mvm_send_lte_commands(struct iwl_mvm *mvm);
-#endif
 
 void iwl_mvm_nic_restart(struct iwl_mvm *mvm, bool fw_error);
 unsigned int iwl_mvm_get_wd_timeout(struct iwl_mvm *mvm,
