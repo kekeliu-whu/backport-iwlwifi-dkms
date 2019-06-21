@@ -65,7 +65,6 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/module.h>
-#include <linux/pm_runtime.h>
 #include <linux/pci.h>
 #include <linux/acpi.h>
 
@@ -875,25 +874,6 @@ static int iwl_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	/* register transport layer debugfs here */
 	iwl_trans_pcie_dbgfs_register(iwl_trans);
 
-	/* if RTPM is in use, enable it in our device */
-	if (iwl_trans->runtime_pm_mode != IWL_PLAT_PM_MODE_DISABLED) {
-		/* We explicitly set the device to active here to
-		 * clear contingent errors.
-		 */
-		pm_runtime_set_active(&pdev->dev);
-
-		pm_runtime_set_autosuspend_delay(&pdev->dev,
-					 iwlwifi_mod_params.d0i3_timeout);
-		pm_runtime_use_autosuspend(&pdev->dev);
-
-		/* We are not supposed to call pm_runtime_allow() by
-		 * ourselves, but let userspace enable runtime PM via
-		 * sysfs.  However, since we don't enable this from
-		 * userspace yet, we need to allow/forbid() ourselves.
-		*/
-		pm_runtime_allow(&pdev->dev);
-	}
-
 	/* The PCI device starts with a reference taken and we are
 	 * supposed to release it here.  But to simplify the
 	 * interaction with the opmode, we don't do it now, but let
@@ -910,15 +890,6 @@ out_free_trans:
 static void iwl_pci_remove(struct pci_dev *pdev)
 {
 	struct iwl_trans *trans = pci_get_drvdata(pdev);
-
-	/* if RTPM was in use, restore it to the state before probe */
-	if (trans->runtime_pm_mode != IWL_PLAT_PM_MODE_DISABLED) {
-		/* We should not call forbid here, but we do for now.
-		 * Check the comment to pm_runtime_allow() in
-		 * iwl_pci_probe().
-		 */
-		pm_runtime_forbid(trans->dev);
-	}
 
 	iwl_drv_stop(trans->drv);
 
@@ -975,76 +946,6 @@ static int iwl_pci_resume(struct device *device)
 	mutex_unlock(&trans_pcie->mutex);
 
 	return 0;
-}
-
-int iwl_pci_fw_enter_d0i3(struct iwl_trans *trans)
-{
-	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
-	int ret;
-
-	if (test_bit(STATUS_FW_ERROR, &trans->status))
-		return 0;
-
-	set_bit(STATUS_TRANS_GOING_IDLE, &trans->status);
-
-	/* config the fw */
-	ret = iwl_op_mode_enter_d0i3(trans->op_mode);
-	if (ret == 1) {
-		IWL_DEBUG_RPM(trans, "aborting d0i3 entrance\n");
-		clear_bit(STATUS_TRANS_GOING_IDLE, &trans->status);
-		return -EBUSY;
-	}
-	if (ret)
-		goto err;
-
-	ret = wait_event_timeout(trans_pcie->d0i3_waitq,
-				 test_bit(STATUS_TRANS_IDLE, &trans->status),
-				 msecs_to_jiffies(IWL_TRANS_IDLE_TIMEOUT));
-	if (!ret) {
-		IWL_ERR(trans, "Timeout entering D0i3\n");
-		ret = -ETIMEDOUT;
-		goto err;
-	}
-
-	clear_bit(STATUS_TRANS_GOING_IDLE, &trans->status);
-
-	return 0;
-err:
-	clear_bit(STATUS_TRANS_GOING_IDLE, &trans->status);
-	iwl_trans_fw_error(trans);
-	return ret;
-}
-
-int iwl_pci_fw_exit_d0i3(struct iwl_trans *trans)
-{
-	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
-	int ret;
-
-	/* sometimes a D0i3 entry is not followed through */
-	if (!test_bit(STATUS_TRANS_IDLE, &trans->status))
-		return 0;
-
-	/* config the fw */
-	ret = iwl_op_mode_exit_d0i3(trans->op_mode);
-	if (ret)
-		goto err;
-
-	/* we clear STATUS_TRANS_IDLE only when D0I3_END command is completed */
-
-	ret = wait_event_timeout(trans_pcie->d0i3_waitq,
-				 !test_bit(STATUS_TRANS_IDLE, &trans->status),
-				 msecs_to_jiffies(IWL_TRANS_IDLE_TIMEOUT));
-	if (!ret) {
-		IWL_ERR(trans, "Timeout exiting D0i3\n");
-		ret = -ETIMEDOUT;
-		goto err;
-	}
-
-	return 0;
-err:
-	clear_bit(STATUS_TRANS_IDLE, &trans->status);
-	iwl_trans_fw_error(trans);
-	return ret;
 }
 
 static const struct dev_pm_ops iwl_dev_pm_ops = {

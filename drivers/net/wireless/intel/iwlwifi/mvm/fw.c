@@ -1244,13 +1244,8 @@ static int iwl_mvm_load_rt_fw(struct iwl_mvm *mvm)
 	}
 
 	iwl_fw_dbg_stop_sync(&mvm->fwrt);
-	/*
-	 * Stop and start the transport without entering low power
-	 * mode. This will save the state of other components on the
-	 * device that are triggered by the INIT firwmare (MFUART).
-	 */
-	_iwl_trans_stop_device(mvm->trans, false);
-	ret = _iwl_trans_start_hw(mvm->trans, false);
+	iwl_trans_stop_device(mvm->trans);
+	ret = iwl_trans_start_hw(mvm->trans);
 	if (ret)
 		return ret;
 
@@ -1422,7 +1417,6 @@ int iwl_mvm_up(struct iwl_mvm *mvm)
 			goto error;
 	}
 
-#ifdef CONFIG_THERMAL
 	if (iwl_mvm_is_tt_in_fw(mvm)) {
 		/* in order to give the responsibility of ct-kill and
 		 * TX backoff to FW we need to send empty temperature reporting
@@ -1434,6 +1428,7 @@ int iwl_mvm_up(struct iwl_mvm *mvm)
 		iwl_mvm_tt_tx_backoff(mvm, 0);
 	}
 
+#ifdef CONFIG_THERMAL
 	/* TODO: read the budget from BIOS / Platform NVM */
 
 	/*
@@ -1446,9 +1441,6 @@ int iwl_mvm_up(struct iwl_mvm *mvm)
 		if (ret)
 			goto error;
 	}
-#else
-	/* Initialize tx backoffs to the minimal possible */
-	iwl_mvm_tt_tx_backoff(mvm, 0);
 #endif
 
 	if (!fw_has_capa(&mvm->fw->ucode_capa, IWL_UCODE_TLV_CAPA_SET_LTR_GEN2))
@@ -1479,10 +1471,6 @@ int iwl_mvm_up(struct iwl_mvm *mvm)
 	if (test_bit(IWL_MVM_STATUS_IN_HW_RESTART, &mvm->status))
 		iwl_mvm_send_recovery_cmd(mvm, ERROR_RECOVERY_UPDATE_DB);
 
-#ifdef CPTCFG_IWLWIFI_LTE_COEX
-	iwl_mvm_send_lte_commands(mvm);
-#endif
-
 #ifdef CPTCFG_IWLMVM_VENDOR_CMDS
 	/* set_mode must be IWL_TX_POWER_MODE_SET_DEVICE if this was
 	 * ever initialized.
@@ -1504,10 +1492,6 @@ int iwl_mvm_up(struct iwl_mvm *mvm)
 					 len, &mvm->txp_cmd))
 			IWL_ERR(mvm, "failed to update TX power\n");
 	}
-#endif
-
-#ifdef CPTCFG_IWLWIFI_FRQ_MGR
-	iwl_mvm_fm_notify_current_dcdc();
 #endif
 
 	if (iwl_acpi_get_eckv(mvm->dev, &mvm->ext_clock_valid))
