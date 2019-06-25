@@ -1,3 +1,11 @@
+backport-iwlwifi-dkms (7858-deb1) UNRELEASED; urgency=low
+
+  * Fix build on recent kernel that removes *.lex.c and *.tab.c at clean
+    stage.
+  * Switch to non-native build.
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Thu, 20 Jun 2019 16:01:11 +0800
+
 backport-iwlwifi-dkms (7858) UNRELEASED; urgency=low
 
   * Sync with upstream HEAD commit 498767c84375.
