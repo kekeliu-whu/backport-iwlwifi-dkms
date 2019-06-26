@@ -1,5 +1,5 @@
 Description: Keep kconf/zconf.{lex,tab}.c during "make clean"
-Author: Anthony Wong <anthony.wong@canonical.com
+Author: Anthony Wong <anthony.wong@canonical.com>
 Forwarded: https://www.spinics.net/lists/backports/msg04856.html
 Last-Update: 2019-06-22
 ---
