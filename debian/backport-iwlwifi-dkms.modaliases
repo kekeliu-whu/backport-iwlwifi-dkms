@@ -2,6 +2,7 @@ alias net-pf-16-proto-16-family-nl80211 cfg80211
 alias pci:v00008086d00007AF0sv*sd00000A10bc*sc*i* iwlwifi
 alias pci:v00008086d00007AF0sv*sd00000510bc*sc*i* iwlwifi
 alias pci:v00008086d00007AF0sv*sd00000310bc*sc*i* iwlwifi
+alias pci:v00008086d00007AF0sv*sd00000090bc*sc*i* iwlwifi
 alias pci:v00008086d00007A70sv*sd00000A10bc*sc*i* iwlwifi
 alias pci:v00008086d00007A70sv*sd00000510bc*sc*i* iwlwifi
 alias pci:v00008086d00007A70sv*sd00000310bc*sc*i* iwlwifi
@@ -366,6 +367,7 @@ alias pci:v00008086d0000271Bsv*sd00000010bc*sc*i* iwlwifi
 alias pci:v00008086d00002526sv*sd0000A014bc*sc*i* iwlwifi
 alias pci:v00008086d00002526sv*sd00008010bc*sc*i* iwlwifi
 alias pci:v00008086d00002526sv*sd00008014bc*sc*i* iwlwifi
+alias pci:v00008086d00002526sv*sd00006014bc*sc*i* iwlwifi
 alias pci:v00008086d00002526sv*sd000042A4bc*sc*i* iwlwifi
 alias pci:v00008086d00002526sv*sd00004234bc*sc*i* iwlwifi
 alias pci:v00008086d00002526sv*sd000040A4bc*sc*i* iwlwifi

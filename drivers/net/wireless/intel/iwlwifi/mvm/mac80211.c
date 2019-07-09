@@ -246,11 +246,11 @@ static const struct cfg80211_pmsr_capabilities iwl_mvm_pmsr_capa = {
 	},
 };
 
-static int iwl_mvm_mac_set_key(struct ieee80211_hw *hw,
-			       enum set_key_cmd cmd,
-			       struct ieee80211_vif *vif,
-			       struct ieee80211_sta *sta,
-			       struct ieee80211_key_conf *key);
+static int __iwl_mvm_mac_set_key(struct ieee80211_hw *hw,
+				 enum set_key_cmd cmd,
+				 struct ieee80211_vif *vif,
+				 struct ieee80211_sta *sta,
+				 struct ieee80211_key_conf *key);
 
 static void iwl_mvm_reset_phy_ctxts(struct iwl_mvm *mvm)
 {
@@ -1401,15 +1401,20 @@ static int iwl_mvm_post_channel_switch(struct ieee80211_hw *hw,
 			goto out_unlock;
 		}
 
-		iwl_mvm_sta_modify_disable_tx(mvm, mvmsta, false);
+		if (!fw_has_capa(&mvm->fw->ucode_capa,
+				 IWL_UCODE_TLV_CAPA_CHANNEL_SWITCH_CMD))
+			iwl_mvm_sta_modify_disable_tx(mvm, mvmsta, false);
 
 		iwl_mvm_mac_ctxt_changed(mvm, vif, false, NULL);
 
-		ret = iwl_mvm_enable_beacon_filter(mvm, vif, 0);
-		if (ret)
-			goto out_unlock;
+		if (!fw_has_capa(&mvm->fw->ucode_capa,
+				 IWL_UCODE_TLV_CAPA_CHANNEL_SWITCH_CMD)) {
+			ret = iwl_mvm_enable_beacon_filter(mvm, vif, 0);
+			if (ret)
+				goto out_unlock;
 
-		iwl_mvm_stop_session_protection(mvm, vif);
+			iwl_mvm_stop_session_protection(mvm, vif);
+		}
 	}
 
 	mvmvif->ps_disabled = false;
@@ -2640,7 +2645,7 @@ static int iwl_mvm_start_ap_ibss(struct ieee80211_hw *hw,
 
 		mvmvif->ap_early_keys[i] = NULL;
 
-		ret = iwl_mvm_mac_set_key(hw, SET_KEY, vif, NULL, key);
+		ret = __iwl_mvm_mac_set_key(hw, SET_KEY, vif, NULL, key);
 		if (ret)
 			goto out_quota_failed;
 	}
@@ -3445,11 +3450,11 @@ static int iwl_mvm_mac_sched_scan_stop(struct ieee80211_hw *hw,
 	return ret;
 }
 
-static int iwl_mvm_mac_set_key(struct ieee80211_hw *hw,
-			       enum set_key_cmd cmd,
-			       struct ieee80211_vif *vif,
-			       struct ieee80211_sta *sta,
-			       struct ieee80211_key_conf *key)
+static int __iwl_mvm_mac_set_key(struct ieee80211_hw *hw,
+				 enum set_key_cmd cmd,
+				 struct ieee80211_vif *vif,
+				 struct ieee80211_sta *sta,
+				 struct ieee80211_key_conf *key)
 {
 	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
 	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
@@ -3503,8 +3508,6 @@ static int iwl_mvm_mac_set_key(struct ieee80211_hw *hw,
 		else
 			return -EOPNOTSUPP;
 	}
-
-	mutex_lock(&mvm->mutex);
 
 	switch (cmd) {
 	case SET_KEY:
@@ -3651,7 +3654,22 @@ static int iwl_mvm_mac_set_key(struct ieee80211_hw *hw,
 		ret = -EINVAL;
 	}
 
+	return ret;
+}
+
+static int iwl_mvm_mac_set_key(struct ieee80211_hw *hw,
+			       enum set_key_cmd cmd,
+			       struct ieee80211_vif *vif,
+			       struct ieee80211_sta *sta,
+			       struct ieee80211_key_conf *key)
+{
+	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
+	int ret;
+
+	mutex_lock(&mvm->mutex);
+	ret = __iwl_mvm_mac_set_key(hw, cmd, vif, sta, key);
 	mutex_unlock(&mvm->mutex);
+
 	return ret;
 }
 
@@ -4554,6 +4572,42 @@ static int iwl_mvm_schedule_client_csa(struct iwl_mvm *mvm,
 				    0, sizeof(cmd), &cmd);
 }
 
+static int iwl_mvm_old_pre_chan_sw_sta(struct iwl_mvm *mvm,
+				       struct ieee80211_vif *vif,
+				       struct ieee80211_channel_switch *chsw)
+{
+	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
+	u32 apply_time;
+
+	/* Schedule the time event to a bit before beacon 1,
+	 * to make sure we're in the new channel when the
+	 * GO/AP arrives. In case count <= 1 immediately schedule the
+	 * TE (this might result with some packet loss or connection
+	 * loss).
+	 */
+	if (chsw->count <= 1)
+		apply_time = 0;
+	else
+		apply_time = chsw->device_timestamp +
+			((vif->bss_conf.beacon_int * (chsw->count - 1) -
+			  IWL_MVM_CHANNEL_SWITCH_TIME_CLIENT) * 1024);
+
+	if (chsw->block_tx)
+		iwl_mvm_csa_client_absent(mvm, vif);
+
+	if (mvmvif->bf_data.bf_enabled) {
+		int ret = iwl_mvm_disable_beacon_filter(mvm, vif, 0);
+
+		if (ret)
+			return ret;
+	}
+
+	iwl_mvm_schedule_csa_period(mvm, vif, vif->bss_conf.beacon_int,
+				    apply_time);
+
+	return 0;
+}
+
 #define IWL_MAX_CSA_BLOCK_TX 1500
 static int iwl_mvm_pre_channel_switch(struct ieee80211_hw *hw,
 				      struct ieee80211_vif *vif,
@@ -4562,7 +4616,6 @@ static int iwl_mvm_pre_channel_switch(struct ieee80211_hw *hw,
 	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
 	struct ieee80211_vif *csa_vif;
 	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
-	u32 apply_time;
 	int ret;
 
 	mutex_lock(&mvm->mutex);
@@ -4606,21 +4659,7 @@ static int iwl_mvm_pre_channel_switch(struct ieee80211_hw *hw,
 
 		break;
 	case NL80211_IFTYPE_STATION:
-		/* Schedule the time event to a bit before beacon 1,
-		 * to make sure we're in the new channel when the
-		 * GO/AP arrives. In case count <= 1 immediately schedule the
-		 * TE (this might result with some packet loss or connection
-		 * loss).
-		 */
-		if (chsw->count <= 1)
-			apply_time = 0;
-		else
-			apply_time = chsw->device_timestamp +
-				((vif->bss_conf.beacon_int * (chsw->count - 1) -
-				  IWL_MVM_CHANNEL_SWITCH_TIME_CLIENT) * 1024);
-
 		if (chsw->block_tx) {
-			iwl_mvm_csa_client_absent(mvm, vif);
 			/*
 			 * In case of undetermined / long time with immediate
 			 * quiet monitor status to gracefully disconnect
@@ -4632,19 +4671,14 @@ static int iwl_mvm_pre_channel_switch(struct ieee80211_hw *hw,
 						      msecs_to_jiffies(IWL_MAX_CSA_BLOCK_TX));
 		}
 
-		if (mvmvif->bf_data.bf_enabled) {
-			ret = iwl_mvm_disable_beacon_filter(mvm, vif, 0);
+		if (!fw_has_capa(&mvm->fw->ucode_capa,
+				 IWL_UCODE_TLV_CAPA_CHANNEL_SWITCH_CMD)) {
+			ret = iwl_mvm_old_pre_chan_sw_sta(mvm, vif, chsw);
 			if (ret)
 				goto out_unlock;
-		}
-
-		if (fw_has_capa(&mvm->fw->ucode_capa,
-				IWL_UCODE_TLV_CAPA_CHANNEL_SWITCH_CMD))
+		} else {
 			iwl_mvm_schedule_client_csa(mvm, vif, chsw);
-		else
-			iwl_mvm_schedule_csa_period(mvm, vif,
-						    vif->bss_conf.beacon_int,
-						    apply_time);
+		}
 
 		mvmvif->csa_count = chsw->count;
 		mvmvif->csa_misbehave = false;
@@ -5246,7 +5280,8 @@ void iwl_mvm_sync_rx_queues_internal(struct iwl_mvm *mvm,
 		atomic_set(&mvm->queue_sync_counter,
 			   mvm->trans->num_rx_queues);
 
-	ret = iwl_mvm_notify_rx_queue(mvm, qmask, (u8 *)notif, size);
+	ret = iwl_mvm_notify_rx_queue(mvm, qmask, (u8 *)notif,
+				      size, !notif->sync);
 	if (ret) {
 		IWL_ERR(mvm, "Failed to trigger RX queues sync (%d)\n", ret);
 		goto out;
