@@ -3654,35 +3654,53 @@ done:
 static __genl_const struct genl_ops hwsim_ops[] = {
 	{
 		.cmd = HWSIM_CMD_REGISTER,
-		.policy = hwsim_genl_policy,
+#if LINUX_VERSION_IS_GEQ(5,2,0)
+		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
+#endif
+
 		.doit = hwsim_register_received_nl,
 		.flags = GENL_UNS_ADMIN_PERM,
 	},
 	{
 		.cmd = HWSIM_CMD_FRAME,
-		.policy = hwsim_genl_policy,
+#if LINUX_VERSION_IS_GEQ(5,2,0)
+		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
+#endif
+
 		.doit = hwsim_cloned_frame_received_nl,
 	},
 	{
 		.cmd = HWSIM_CMD_TX_INFO_FRAME,
-		.policy = hwsim_genl_policy,
+#if LINUX_VERSION_IS_GEQ(5,2,0)
+		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
+#endif
+
 		.doit = hwsim_tx_info_frame_received_nl,
 	},
 	{
 		.cmd = HWSIM_CMD_NEW_RADIO,
-		.policy = hwsim_genl_policy,
+#if LINUX_VERSION_IS_GEQ(5,2,0)
+		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
+#endif
+
 		.doit = hwsim_new_radio_nl,
 		.flags = GENL_UNS_ADMIN_PERM,
 	},
 	{
 		.cmd = HWSIM_CMD_DEL_RADIO,
-		.policy = hwsim_genl_policy,
+#if LINUX_VERSION_IS_GEQ(5,2,0)
+		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
+#endif
+
 		.doit = hwsim_del_radio_nl,
 		.flags = GENL_UNS_ADMIN_PERM,
 	},
 	{
 		.cmd = HWSIM_CMD_GET_RADIO,
-		.policy = hwsim_genl_policy,
+#if LINUX_VERSION_IS_GEQ(5,2,0)
+		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
+#endif
+
 		.doit = hwsim_get_radio_nl,
 		.dumpit = hwsim_dump_radio_nl,
 	},
@@ -3692,6 +3710,7 @@ static struct genl_family hwsim_genl_family __genl_ro_after_init = {
 	.name = "MAC80211_HWSIM",
 	.version = 1,
 	.maxattr = HWSIM_ATTR_MAX,
+	.policy = hwsim_genl_policy,
 	.netnsok = true,
 	.module = THIS_MODULE,
 	.ops = hwsim_ops,
