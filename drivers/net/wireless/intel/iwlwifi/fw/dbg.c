@@ -468,6 +468,9 @@ static const struct iwl_prph_range iwl_prph_dump_addr_9000[] = {
 	{ .start = 0x00a05400, .end = 0x00a056e8 },
 	{ .start = 0x00a08000, .end = 0x00a098bc },
 	{ .start = 0x00a02400, .end = 0x00a02758 },
+	{ .start = 0x00a04764, .end = 0x00a0476c },
+	{ .start = 0x00a04770, .end = 0x00a04774 },
+	{ .start = 0x00a04620, .end = 0x00a04624 },
 };
 
 static const struct iwl_prph_range iwl_prph_dump_addr_22000[] = {
@@ -1905,8 +1908,6 @@ static void iwl_fw_ini_dump_trigger(struct iwl_fw_runtime *fwrt,
 			iwl_dump_ini_mem(fwrt, data, reg, &ops);
 			break;
 		case IWL_FW_INI_REGION_PERIPHERY_MAC:
-		case IWL_FW_INI_REGION_PERIPHERY_PHY:
-		case IWL_FW_INI_REGION_PERIPHERY_AUX:
 			ops.get_num_of_ranges =	iwl_dump_ini_mem_ranges;
 			ops.get_size = iwl_dump_ini_mem_get_size;
 			ops.fill_mem_hdr = iwl_dump_ini_mem_fill_header;
@@ -1971,6 +1972,8 @@ static void iwl_fw_ini_dump_trigger(struct iwl_fw_runtime *fwrt,
 			ops.fill_range = iwl_dump_ini_csr_iter;
 			iwl_dump_ini_mem(fwrt, data, reg, &ops);
 			break;
+		case IWL_FW_INI_REGION_PERIPHERY_PHY:
+		case IWL_FW_INI_REGION_PERIPHERY_AUX:
 		case IWL_FW_INI_REGION_DRAM_IMR:
 			/* This is undefined yet */
 		default:
@@ -2481,8 +2484,7 @@ iwl_fw_dbg_buffer_allocation(struct iwl_fw_runtime *fwrt, u32 size)
 
 	virtual_addr =
 		dma_alloc_coherent(fwrt->trans->dev, size, &phys_addr,
-				   GFP_KERNEL | __GFP_NOWARN | __GFP_ZERO |
-				   __GFP_COMP);
+				   GFP_KERNEL | __GFP_NOWARN);
 
 	/* TODO: alloc fragments if needed */
 	if (!virtual_addr)
@@ -2499,7 +2501,7 @@ iwl_fw_dbg_buffer_allocation(struct iwl_fw_runtime *fwrt, u32 size)
 }
 
 static void iwl_fw_dbg_buffer_apply(struct iwl_fw_runtime *fwrt,
-				    struct iwl_fw_ini_allocation_data *alloc,
+				    struct iwl_fw_ini_allocation_tlv *alloc,
 				    enum iwl_fw_ini_apply_point pnt)
 {
 	struct iwl_trans *trans = fwrt->trans;
@@ -2514,7 +2516,14 @@ static void iwl_fw_dbg_buffer_apply(struct iwl_fw_runtime *fwrt,
 		.len[0] = sizeof(ldbg_cmd),
 	};
 	int block_idx = trans->dbg.num_blocks;
-	u32 buf_location = le32_to_cpu(alloc->tlv.buffer_location);
+	u32 buf_location = le32_to_cpu(alloc->buffer_location);
+	u32 alloc_id = le32_to_cpu(alloc->allocation_id);
+
+	if (alloc_id <= IWL_FW_INI_ALLOCATION_INVALID ||
+	    alloc_id >= IWL_FW_INI_ALLOCATION_NUM) {
+		IWL_ERR(fwrt, "WRT: Invalid allocation id %d\n", alloc_id);
+		return;
+	}
 
 	if (fwrt->trans->dbg.ini_dest == IWL_FW_INI_LOCATION_INVALID)
 		fwrt->trans->dbg.ini_dest = buf_location;
@@ -2539,12 +2548,11 @@ static void iwl_fw_dbg_buffer_apply(struct iwl_fw_runtime *fwrt,
 	if (buf_location != IWL_FW_INI_LOCATION_DRAM_PATH)
 		return;
 
-	if (!alloc->is_alloc) {
-		iwl_fw_dbg_buffer_allocation(fwrt,
-					     le32_to_cpu(alloc->tlv.size));
+	if (!(BIT(alloc_id) & fwrt->trans->dbg.is_alloc)) {
+		iwl_fw_dbg_buffer_allocation(fwrt, le32_to_cpu(alloc->size));
 		if (block_idx == trans->dbg.num_blocks)
 			return;
-		alloc->is_alloc = 1;
+		fwrt->trans->dbg.is_alloc |= BIT(alloc_id);
 	}
 
 	/* First block is assigned via registers / context info */
@@ -2557,9 +2565,9 @@ static void iwl_fw_dbg_buffer_apply(struct iwl_fw_runtime *fwrt,
 	cmd->num_frags = cpu_to_le32(1);
 	cmd->fragments[0].address =
 		cpu_to_le64(trans->dbg.fw_mon[block_idx].physical);
-	cmd->fragments[0].size = alloc->tlv.size;
-	cmd->allocation_id = alloc->tlv.allocation_id;
-	cmd->buffer_location = alloc->tlv.buffer_location;
+	cmd->fragments[0].size = alloc->size;
+	cmd->allocation_id = alloc->allocation_id;
+	cmd->buffer_location = alloc->buffer_location;
 
 	iwl_trans_send_cmd(trans, &hcmd);
 }
@@ -2773,10 +2781,13 @@ static void _iwl_fw_dbg_apply_point(struct iwl_fw_runtime *fwrt,
 				    enum iwl_fw_ini_apply_point pnt,
 				    bool ext)
 {
-	void *iter = data->data;
+	struct iwl_apply_point_data *iter;
 
-	while (iter && iter < data->data + data->size) {
-		struct iwl_ucode_tlv *tlv = iter;
+	if (!data->list.next)
+		return;
+
+	list_for_each_entry(iter, &data->list, list) {
+		struct iwl_ucode_tlv *tlv = &iter->tlv;
 		void *ini_tlv = (void *)tlv->data;
 		u32 type = le32_to_cpu(tlv->type);
 		const char invalid_ap_str[] =
@@ -2786,24 +2797,19 @@ static void _iwl_fw_dbg_apply_point(struct iwl_fw_runtime *fwrt,
 		case IWL_UCODE_TLV_TYPE_DEBUG_INFO:
 			iwl_fw_dbg_info_apply(fwrt, ini_tlv, ext, pnt);
 			break;
-		case IWL_UCODE_TLV_TYPE_BUFFER_ALLOCATION: {
-			struct iwl_fw_ini_allocation_data *buf_alloc = ini_tlv;
-
+		case IWL_UCODE_TLV_TYPE_BUFFER_ALLOCATION:
 			if (pnt != IWL_FW_INI_APPLY_EARLY) {
 				IWL_ERR(fwrt, invalid_ap_str, ext, pnt,
 					"buffer allocation");
-				goto next;
+				break;
 			}
-
 			iwl_fw_dbg_buffer_apply(fwrt, ini_tlv, pnt);
-			iter += sizeof(buf_alloc->is_alloc);
 			break;
-		}
 		case IWL_UCODE_TLV_TYPE_HCMD:
 			if (pnt < IWL_FW_INI_APPLY_AFTER_ALIVE) {
 				IWL_ERR(fwrt, invalid_ap_str, ext, pnt,
 					"host command");
-				goto next;
+				break;
 			}
 			iwl_fw_dbg_send_hcmd(fwrt, tlv, ext);
 			break;
@@ -2821,8 +2827,6 @@ static void _iwl_fw_dbg_apply_point(struct iwl_fw_runtime *fwrt,
 				  ext, type);
 			break;
 		}
-next:
-		iter += sizeof(*tlv) + le32_to_cpu(tlv->length);
 	}
 }
 

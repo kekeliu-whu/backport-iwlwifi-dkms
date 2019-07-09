@@ -218,8 +218,7 @@ static void iwl_pcie_alloc_fw_monitor_block(struct iwl_trans *trans,
 	for (power = max_power; power >= min_power; power--) {
 		size = BIT(power);
 		cpu_addr = dma_alloc_coherent(trans->dev, size, &phys,
-					      GFP_KERNEL | __GFP_NOWARN |
-					      __GFP_ZERO | __GFP_COMP);
+					      GFP_KERNEL | __GFP_NOWARN);
 		if (!cpu_addr)
 			continue;
 
@@ -2140,7 +2139,6 @@ static void iwl_trans_pcie_release_nic_access(struct iwl_trans *trans,
 	 * MAC_ACCESS_REQ bit to be performed before any other writes
 	 * scheduled on different CPUs (after we drop reg_lock).
 	 */
-	mmiowb();
 out:
 	spin_unlock_irqrestore(&trans_pcie->reg_lock, *flags);
 }
@@ -3615,8 +3613,9 @@ struct iwl_trans *iwl_trans_pcie_alloc(struct pci_dev *pdev,
 	} else if (CSR_HW_RF_ID_TYPE_CHIP_ID(trans->hw_rf_id) ==
 		   CSR_HW_RF_ID_TYPE_CHIP_ID(CSR_HW_RF_ID_TYPE_HR) &&
 		   ((trans->cfg != &iwl_ax200_cfg_cc &&
-		    trans->cfg != &killer1650x_2ax_cfg &&
-		    trans->cfg != &killer1650w_2ax_cfg) ||
+		     trans->cfg != &killer1650x_2ax_cfg &&
+		     trans->cfg != &killer1650w_2ax_cfg &&
+		     trans->cfg != &iwl_ax201_cfg_quz_hr) ||
 		    trans->hw_rev == CSR_HW_REV_TYPE_QNJ_B0)) {
 		u32 hw_status;
 
