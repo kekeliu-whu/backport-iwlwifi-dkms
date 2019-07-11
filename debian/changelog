@@ -1,4 +1,4 @@
-backport-iwlwifi-dkms (7906-ubuntu1) UNRELEASED; urgency=low
+backport-iwlwifi-dkms (7906-ubuntu1) eoan; urgency=low
 
   * Sync with debian 7906-1.
 
