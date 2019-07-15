@@ -1,1 +1,2 @@
 0001-keep-zconf-in-make-clean.patch
+0002-fix-format-overflow-compile-error-in-kconf-confdata..patch
