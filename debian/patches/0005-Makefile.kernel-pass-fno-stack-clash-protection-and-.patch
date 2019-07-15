@@ -1,0 +1,22 @@
+From: You-Sheng Yang <vicamo@gmail.com>
+Date: Mon, 15 Jul 2019 20:05:54 +0800
+Subject: Makefile.kernel: pass -fno-stack-clash-protection and
+ -fcf-protection=none for gcc-9
+
+---
+ Makefile.kernel | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/Makefile.kernel b/Makefile.kernel
+index 3274949..403345d 100644
+--- a/Makefile.kernel
++++ b/Makefile.kernel
+@@ -10,6 +10,8 @@ KBUILD_CFLAGS := $(KBUILD_CFLAGS) -Wformat-security \
+ 	$(call backport-cc-disable-error, date-time) \
+ 	$(call backport-cc-disable-warning, date-time)
+ 
++KBUILD_CFLAGS += -fno-stack-clash-protection -fcf-protection=none
++
+ NOSTDINC_FLAGS := \
+ 	-I$(M)/backport-include/ \
+ 	-I$(M)/backport-include/uapi \
