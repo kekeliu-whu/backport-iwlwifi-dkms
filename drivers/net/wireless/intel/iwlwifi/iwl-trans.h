@@ -692,6 +692,16 @@ struct iwl_dram_data {
 };
 
 /**
+ * struct iwl_fw_mon - fw monitor per allocation id
+ * @num_frags: number of fragments
+ * @frags: an array of DRAM buffer fragments
+ */
+struct iwl_fw_mon {
+	u32 num_frags;
+	struct iwl_dram_data *frags;
+};
+
+/**
  * struct iwl_self_init_dram - dram data used by self init process
  * @fw: lmac and umac dram data
  * @fw_cnt: total number of items in array
@@ -719,11 +729,17 @@ struct iwl_self_init_dram {
  *	pointers was recevied via TLV. uses enum &iwl_error_event_table_status
  * @internal_ini_cfg: internal debug cfg state. Uses &enum iwl_ini_cfg_state
  * @external_ini_cfg: external debug cfg state. Uses &enum iwl_ini_cfg_state
- * @num_blocks: number of blocks in fw_mon
- * @fw_mon: address of the buffers for firmware monitor
- * @is_alloc: bit i is set if buffer i was allocated
+ * @fw_mon_cfg: debug buffer allocation configuration
+ * @fw_mon_ini: DRAM buffer fragments per allocation id
+ * @fw_mon: DRAM buffer for firmware monitor
  * @hw_error: equals true if hw error interrupt was received from the FW
  * @ini_dest: debug monitor destination uses &enum iwl_fw_ini_buffer_location
+ * @active_regions: active regions
+ * @debug_info_tlv_list: list of debug info TLVs
+ * @time_point: array of debug time points
+ * @periodic_trig_list: periodic triggers list
+ * @domains_bitmap: bitmap of active domains other than
+ *	&IWL_FW_INI_DOMAIN_ALWAYS_ON
  */
 struct iwl_trans_debug {
 	u8 n_dest_reg;
@@ -740,15 +756,21 @@ struct iwl_trans_debug {
 	enum iwl_ini_cfg_state internal_ini_cfg;
 	enum iwl_ini_cfg_state external_ini_cfg;
 
-	struct iwl_apply_point_data apply_points[IWL_FW_INI_APPLY_NUM];
-	struct iwl_apply_point_data apply_points_ext[IWL_FW_INI_APPLY_NUM];
+	struct iwl_fw_ini_allocation_tlv fw_mon_cfg[IWL_FW_INI_ALLOCATION_NUM];
+	struct iwl_fw_mon fw_mon_ini[IWL_FW_INI_ALLOCATION_NUM];
 
-	int num_blocks;
-	struct iwl_dram_data fw_mon[IWL_FW_INI_ALLOCATION_NUM];
-	u32 is_alloc;
+	struct iwl_dram_data fw_mon;
 
 	bool hw_error;
 	enum iwl_fw_ini_buffer_location ini_dest;
+
+	struct iwl_ucode_tlv *active_regions[IWL_FW_INI_MAX_REGION_ID];
+	struct list_head debug_info_tlv_list;
+	struct iwl_dbg_tlv_time_point_data
+		time_point[IWL_FW_INI_TIME_POINT_NUM];
+	struct list_head periodic_trig_list;
+
+	u32 domains_bitmap;
 };
 
 /**
