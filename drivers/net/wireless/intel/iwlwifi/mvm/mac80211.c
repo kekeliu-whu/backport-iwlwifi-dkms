@@ -439,7 +439,7 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
 	 * for older devices. We also don't see this issue on any newer
 	 * devices.
 	 */
-	if (mvm->cfg->device_family >= IWL_DEVICE_FAMILY_9000)
+	if (mvm->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_9000)
 		ieee80211_hw_set(hw, TX_AMSDU);
 	ieee80211_hw_set(hw, TX_FRAG_LIST);
 
@@ -1172,7 +1172,7 @@ int __iwl_mvm_mac_start(struct iwl_mvm *mvm)
 	}
 	ret = iwl_mvm_up(mvm);
 
-	iwl_fw_dbg_apply_point(&mvm->fwrt, IWL_FW_INI_APPLY_POST_INIT);
+	iwl_dbg_tlv_apply_point(&mvm->fwrt, IWL_FW_INI_APPLY_POST_INIT);
 
 	if (ret && test_bit(IWL_MVM_STATUS_IN_HW_RESTART, &mvm->status)) {
 		/* Something went wrong - we need to finish some cleanup
@@ -1214,6 +1214,8 @@ static void iwl_mvm_restart_complete(struct iwl_mvm *mvm)
 	if (mvm->csi_cfg.flags & IWL_CHANNEL_ESTIMATION_ENABLE)
 		iwl_mvm_send_csi_cmd(mvm);
 #endif
+
+	iwl_mvm_send_recovery_cmd(mvm, ERROR_RECOVERY_END_OF_RECOVERY);
 
 	iwl_mvm_send_recovery_cmd(mvm, ERROR_RECOVERY_END_OF_RECOVERY);
 
@@ -3471,7 +3473,7 @@ static int __iwl_mvm_mac_set_key(struct ieee80211_hw *hw,
 
 	switch (key->cipher) {
 	case WLAN_CIPHER_SUITE_TKIP:
-		if (!mvm->trans->cfg->gen2) {
+		if (!mvm->trans->trans_cfg->gen2) {
 			key->flags |= IEEE80211_KEY_FLAG_GENERATE_MMIC;
 			key->flags |= IEEE80211_KEY_FLAG_PUT_IV_SPACE;
 		} else if (vif->type == NL80211_IFTYPE_STATION) {
@@ -3979,7 +3981,8 @@ out_unlock:
 	return ret;
 }
 
-static int iwl_mvm_cancel_roc(struct ieee80211_hw *hw)
+static int iwl_mvm_cancel_roc(struct ieee80211_hw *hw,
+			      struct ieee80211_vif *vif)
 {
 	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
 
@@ -5269,7 +5272,6 @@ void iwl_mvm_sync_rx_queues_internal(struct iwl_mvm *mvm,
 	u32 qmask = BIT(mvm->trans->num_rx_queues) - 1;
 	int ret;
 
-	lockdep_assert_held(&mvm->mutex);
 
 	if (!iwl_mvm_has_new_rx_api(mvm))
 		return;
@@ -5288,6 +5290,7 @@ void iwl_mvm_sync_rx_queues_internal(struct iwl_mvm *mvm,
 	}
 
 	if (notif->sync) {
+		lockdep_assert_held(&mvm->mutex);
 		ret = wait_event_timeout(mvm->rx_sync_waitq,
 					 atomic_read(&mvm->queue_sync_counter) == 0 ||
 					 iwl_mvm_is_radio_killed(mvm),
