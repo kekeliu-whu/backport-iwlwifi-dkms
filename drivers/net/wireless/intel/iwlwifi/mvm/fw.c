@@ -459,7 +459,7 @@ static int iwl_run_unified_mvm_ucode(struct iwl_mvm *mvm, bool read_nvm)
 				   iwl_wait_init_complete,
 				   NULL);
 
-	iwl_dbg_tlv_apply_point(&mvm->fwrt, IWL_FW_INI_APPLY_EARLY);
+	iwl_dbg_tlv_time_point(&mvm->fwrt, IWL_FW_INI_TIME_POINT_EARLY, NULL);
 
 	/* Will also start the device */
 	ret = iwl_mvm_load_ucode_wait_alive(mvm, IWL_UCODE_REGULAR);
@@ -467,7 +467,8 @@ static int iwl_run_unified_mvm_ucode(struct iwl_mvm *mvm, bool read_nvm)
 		IWL_ERR(mvm, "Failed to start RT ucode: %d\n", ret);
 		goto error;
 	}
-	iwl_dbg_tlv_apply_point(&mvm->fwrt, IWL_FW_INI_APPLY_AFTER_ALIVE);
+	iwl_dbg_tlv_time_point(&mvm->fwrt, IWL_FW_INI_TIME_POINT_AFTER_ALIVE,
+			       NULL);
 
 	/* Send init config command to mark that we are sending NVM access
 	 * commands
@@ -543,18 +544,6 @@ static int iwl_send_phy_cfg_cmd(struct iwl_mvm *mvm)
 	const struct iwl_tlv_calib_ctrl *default_calib =
 		&mvm->fw->default_calib[ucode_type];
 #endif
-
-	if (iwl_mvm_has_unified_ucode(mvm) ||
-	    !mvm->trans->cfg->tx_with_siso_diversity) {
-		return 0;
-	} else if (mvm->trans->cfg->tx_with_siso_diversity) {
-		/*
-		 * TODO: currently we don't set the antenna but letting the NIC
-		 * to decide which antenna to use. This should come from BIOS.
-		 */
-		phy_cfg_cmd.phy_cfg |=
-			cpu_to_le32(FW_PHY_CFG_CHAIN_SAD_ENABLED);
-	}
 
 	/* Set parameters */
 	phy_cfg_cmd.phy_cfg = cpu_to_le32(iwl_mvm_get_phy_config(mvm));
@@ -1397,7 +1386,7 @@ static int iwl_mvm_load_rt_fw(struct iwl_mvm *mvm)
 	if (ret)
 		return ret;
 
-	iwl_dbg_tlv_apply_point(&mvm->fwrt, IWL_FW_INI_APPLY_EARLY);
+	iwl_dbg_tlv_time_point(&mvm->fwrt, IWL_FW_INI_TIME_POINT_EARLY, NULL);
 
 	mvm->rfkill_safe_init_done = false;
 	ret = iwl_mvm_load_ucode_wait_alive(mvm, IWL_UCODE_REGULAR);
@@ -1406,7 +1395,8 @@ static int iwl_mvm_load_rt_fw(struct iwl_mvm *mvm)
 
 	mvm->rfkill_safe_init_done = true;
 
-	iwl_dbg_tlv_apply_point(&mvm->fwrt, IWL_FW_INI_APPLY_AFTER_ALIVE);
+	iwl_dbg_tlv_time_point(&mvm->fwrt, IWL_FW_INI_TIME_POINT_AFTER_ALIVE,
+			       NULL);
 
 	return iwl_init_paging(&mvm->fwrt, mvm->fwrt.cur_fw_img);
 }
@@ -1490,13 +1480,13 @@ int iwl_mvm_up(struct iwl_mvm *mvm)
 	if (ret)
 		goto error;
 
-	ret = iwl_send_phy_cfg_cmd(mvm);
-	if (ret)
-		goto error;
-
 	if (!iwl_mvm_has_unified_ucode(mvm)) {
 		/* Send phy db control command and then phy db calibration */
 		ret = iwl_send_phy_db_data(mvm->phy_db);
+		if (ret)
+			goto error;
+
+		ret = iwl_send_phy_cfg_cmd(mvm);
 		if (ret)
 			goto error;
 	}
