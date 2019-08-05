@@ -1,4 +1,4 @@
-backport-iwlwifi-dkms (7986-0ubuntu1) UNRELEASED; urgency=low
+backport-iwlwifi-dkms (7986-0ubuntu1) eoan; urgency=low
 
   * Sync with upstream HEAD commit 4d1a7371ca7a58.
 
