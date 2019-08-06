@@ -904,6 +904,8 @@ iwl_mvm_netdetect_config(struct iwl_mvm *mvm,
 		wowlan_config_cmd.wakeup_filter |=
 			cpu_to_le32(IWL_WOWLAN_WAKEUP_RF_KILL_DEASSERT);
 
+	wowlan_config_cmd.sta_id = mvm->aux_sta.sta_id;
+
 	ret = iwl_mvm_send_cmd_pdu(mvm, WOWLAN_CONFIGURATION, 0,
 				   sizeof(wowlan_config_cmd),
 				   &wowlan_config_cmd);
@@ -1011,6 +1013,8 @@ static int __iwl_mvm_suspend(struct ieee80211_hw *hw,
 	} else {
 		struct iwl_wowlan_config_cmd wowlan_config_cmd = {};
 
+		wowlan_config_cmd.sta_id = mvmvif->ap_sta_id;
+
 		ap_sta = rcu_dereference_protected(
 			mvm->fw_id_to_mac_id[mvmvif->ap_sta_id],
 			lockdep_is_held(&mvm->mutex));
@@ -1050,7 +1054,7 @@ static int __iwl_mvm_suspend(struct ieee80211_hw *hw,
 	 * recording before entering D3. In later devices the FW stops the
 	 * recording automatically.
 	 */
-	if (mvm->trans->cfg->device_family < IWL_DEVICE_FAMILY_9000)
+	if (mvm->trans->trans_cfg->device_family < IWL_DEVICE_FAMILY_9000)
 		iwl_fw_dbg_stop_restart_recording(&mvm->fwrt, NULL, true);
 
 	/* must be last -- this switches firmware state */
@@ -1068,7 +1072,7 @@ static int __iwl_mvm_suspend(struct ieee80211_hw *hw,
 
 	clear_bit(IWL_MVM_STATUS_IN_HW_RESTART, &mvm->status);
 
-	iwl_trans_d3_suspend(mvm->trans, test, !unified_image);
+	ret = iwl_trans_d3_suspend(mvm->trans, test, !unified_image);
  out:
 	if (ret < 0) {
 		iwl_mvm_free_nd(mvm);
@@ -1658,7 +1662,7 @@ static bool iwl_mvm_query_wakeup_reasons(struct iwl_mvm *mvm,
 		mvm_ap_sta->tid_data[i].seq_number = seq;
 	}
 
-	if (mvm->trans->cfg->device_family >= IWL_DEVICE_FAMILY_22000) {
+	if (mvm->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_22000) {
 		i = mvm->offload_tid;
 		iwl_trans_set_q_ptrs(mvm->trans,
 				     mvm_ap_sta->tid_data[i].txq_id,
@@ -1930,15 +1934,6 @@ static int __iwl_mvm_resume(struct iwl_mvm *mvm, bool test)
 	if (IS_ERR_OR_NULL(vif))
 		goto err;
 
-	ret = iwl_trans_d3_resume(mvm->trans, &d3_status, test, !unified_image);
-	if (ret)
-		goto err;
-
-	if (d3_status != IWL_D3_STATUS_ALIVE) {
-		IWL_INFO(mvm, "Device was reset during suspend\n");
-		goto err;
-	}
-
 	iwl_fw_dbg_read_d3_debug_data(&mvm->fwrt);
 
 	if (iwl_mvm_check_rt_status(mvm, vif)) {
@@ -1950,12 +1945,48 @@ static int __iwl_mvm_resume(struct iwl_mvm *mvm, bool test)
 		goto err;
 	}
 
+	ret = iwl_trans_d3_resume(mvm->trans, &d3_status, test, !unified_image);
+	if (ret)
+		goto err;
+
+	if (d3_status != IWL_D3_STATUS_ALIVE) {
+		IWL_INFO(mvm, "Device was reset during suspend\n");
+		goto err;
+	}
+
 	if (d0i3_first) {
-		ret = iwl_mvm_send_cmd_pdu(mvm, D0I3_END_CMD, 0, 0, NULL);
+		struct iwl_host_cmd cmd = {
+			.id = D0I3_END_CMD,
+			.flags = CMD_WANT_SKB,
+		};
+		int len;
+
+		ret = iwl_mvm_send_cmd(mvm, &cmd);
 		if (ret < 0) {
 			IWL_ERR(mvm, "Failed to send D0I3_END_CMD first (%d)\n",
 				ret);
 			goto err;
+		}
+		switch (mvm->cmd_ver.d0i3_resp) {
+		case 0:
+			break;
+		case 1:
+			len = iwl_rx_packet_payload_len(cmd.resp_pkt);
+			if (len != sizeof(u32)) {
+				IWL_ERR(mvm,
+					"Error with D0I3_END_CMD response size (%d)\n",
+					len);
+				goto err;
+			}
+			if (IWL_D0I3_RESET_REQUIRE &
+			    le32_to_cpu(*(__le32 *)cmd.resp_pkt->data)) {
+				iwl_write32(mvm->trans, CSR_RESET,
+					    CSR_RESET_REG_FLAG_FORCE_NMI);
+				iwl_free_resp(&cmd);
+			}
+			break;
+		default:
+			WARN_ON(1);
 		}
 	}
 

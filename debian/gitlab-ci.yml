@@ -4,3 +4,4 @@ include:
 
 variables:
   RELEASE: 'disco'
+  SALSA_CI_AUTOPKGTEST_ARGS: '--timeout-install=7200'
