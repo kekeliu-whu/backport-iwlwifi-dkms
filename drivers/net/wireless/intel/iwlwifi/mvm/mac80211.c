@@ -1172,7 +1172,10 @@ int __iwl_mvm_mac_start(struct iwl_mvm *mvm)
 	}
 	ret = iwl_mvm_up(mvm);
 
-	iwl_dbg_tlv_apply_point(&mvm->fwrt, IWL_FW_INI_APPLY_POST_INIT);
+	iwl_dbg_tlv_time_point(&mvm->fwrt, IWL_FW_INI_TIME_POINT_POST_INIT,
+			       NULL);
+	iwl_dbg_tlv_time_point(&mvm->fwrt, IWL_FW_INI_TIME_POINT_PERIODIC,
+			       NULL);
 
 	if (ret && test_bit(IWL_MVM_STATUS_IN_HW_RESTART, &mvm->status)) {
 		/* Something went wrong - we need to finish some cleanup
@@ -1312,8 +1315,6 @@ static void iwl_mvm_mac_stop(struct ieee80211_hw *hw)
 	 * retriggered after we flush it but before we've cleared the bit.
 	 */
 	clear_bit(IWL_MVM_STATUS_FIRMWARE_RUNNING, &mvm->status);
-
-	iwl_fw_cancel_dumps(&mvm->fwrt);
 
 #ifdef CPTCFG_MAC80211_LATENCY_MEASUREMENTS
 	cancel_delayed_work_sync(&mvm->tx_latency_watchdog_wk);
