@@ -1,3 +1,11 @@
+backport-iwlwifi-dkms (7906-ubuntu2) bionic; urgency=low
+
+  * Fix build on Eoan. (LP: #1835858)
+    - Fix build with gcc-9. (LP: #1830961)
+    - Fix build against kernel v5.2.
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Tue, 06 Aug 2019 18:46:53 +0800
+
 backport-iwlwifi-dkms (7906-ubuntu1) bionic; urgency=low
 
   * Sync with debian 7906-1.
