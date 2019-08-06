@@ -1,3 +1,9 @@
+backport-iwlwifi-dkms (7958-0ubuntu1) disco; urgency=low
+
+  * Sync with upstream HEAD commit fa9d3999e70b7d.
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Mon, 5 Aug 2019 11:06:41 +0800
+
 backport-iwlwifi-dkms (7906-0ubuntu1) disco; urgency=low
 
   * Initial release (LP: #1835858)
