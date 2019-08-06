@@ -1,0 +1,32 @@
+From 577b8111104527814575e301ab33f53bce9673e3 Mon Sep 17 00:00:00 2001
+From: You-Sheng Yang <vicamo@gmail.com>
+Date: Sat, 27 Jul 2019 18:03:46 +0800
+Subject: backport: fix build for v5.2 kernel
+
+---
+ backport-include/linux/skbuff.h | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/backport-include/linux/skbuff.h b/backport-include/linux/skbuff.h
+index 4d37569f5f13..8ba21d7f3a5c 100644
+--- a/backport-include/linux/skbuff.h
++++ b/backport-include/linux/skbuff.h
+@@ -200,6 +200,7 @@ static inline struct sk_buff *__pskb_copy_fclone(struct sk_buff *skb,
+ struct sk_buff *skb_clone_sk(struct sk_buff *skb);
+ #endif
+ 
++#if LINUX_VERSION_IS_LESS(5,2,0)
+ static inline bool skb_xmit_more(struct sk_buff *skb)
+ {
+ #if LINUX_VERSION_IS_LESS(3,18,0)
+@@ -208,6 +209,7 @@ static inline bool skb_xmit_more(struct sk_buff *skb)
+ 	return skb->xmit_more;
+ #endif
+ }
++#endif
+ 
+ #if LINUX_VERSION_IS_LESS(3,19,0)
+ /**
+-- 
+2.20.1
+

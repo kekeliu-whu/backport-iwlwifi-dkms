@@ -680,6 +680,12 @@ struct iwl_mvm_tdls_peer_counter {
  * @valid: reordering is valid for this queue
  * @lock: protect reorder buffer internal state
  * @mvm: mvm pointer, needed for frame timer context
+ * @consec_oldsn_drops: consecutive drops due to old SN
+ * @consec_oldsn_ampdu_gp2: A-MPDU GP2 timestamp to track
+ *	when to apply old SN consecutive drop workaround
+ * @consec_oldsn_prev_drop: track whether or not an MPDU
+ *	that was single/part of the previous A-MPDU was
+ *	dropped due to old SN
  */
 struct iwl_mvm_reorder_buffer {
 	u16 head_sn;
@@ -693,6 +699,9 @@ struct iwl_mvm_reorder_buffer {
 	bool valid;
 	spinlock_t lock;
 	struct iwl_mvm *mvm;
+	unsigned int consec_oldsn_drops;
+	u32 consec_oldsn_ampdu_gp2;
+	unsigned int consec_oldsn_prev_drop:1;
 } ____cacheline_aligned_in_smp;
 
 /**
@@ -1194,11 +1203,13 @@ struct iwl_mvm {
 
 	struct list_head list;
 
-	/* move this out from vendor commands once there are other users */
-	struct {
-		u8 csi_notif;
-	} cmd_ver;
 #endif /* CPTCFG_IWLMVM_VENDOR_CMDS */
+	struct {
+#ifdef CPTCFG_IWLMVM_VENDOR_CMDS
+		u8 csi_notif;
+#endif /* CPTCFG_IWLMVM_VENDOR_CMDS */
+		u8 d0i3_resp;
+	} cmd_ver;
 
 	struct ieee80211_vif *nan_vif;
 #define IWL_MAX_BAID	32
@@ -1448,13 +1459,13 @@ static inline bool iwl_mvm_has_new_rx_api(struct iwl_mvm *mvm)
 static inline bool iwl_mvm_has_new_tx_api(struct iwl_mvm *mvm)
 {
 	/* TODO - replace with TLV once defined */
-	return mvm->trans->cfg->use_tfh;
+	return mvm->trans->trans_cfg->use_tfh;
 }
 
 static inline bool iwl_mvm_has_unified_ucode(struct iwl_mvm *mvm)
 {
 	/* TODO - better define this */
-	return mvm->trans->cfg->device_family >= IWL_DEVICE_FAMILY_22000;
+	return mvm->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_22000;
 }
 
 static inline bool iwl_mvm_is_cdb_supported(struct iwl_mvm *mvm)
@@ -1479,7 +1490,7 @@ static inline bool iwl_mvm_cdb_scan_api(struct iwl_mvm *mvm)
 	 * but then there's a little bit of code in scan that won't make
 	 * any sense...
 	 */
-	return mvm->trans->cfg->device_family >= IWL_DEVICE_FAMILY_22000;
+	return mvm->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_22000;
 }
 
 static inline bool iwl_mvm_is_reduced_config_scan_supported(struct iwl_mvm *mvm)
@@ -1699,6 +1710,8 @@ void iwl_mvm_rx_monitor_no_data(struct iwl_mvm *mvm, struct napi_struct *napi,
 				struct iwl_rx_cmd_buffer *rxb, int queue);
 void iwl_mvm_rx_frame_release(struct iwl_mvm *mvm, struct napi_struct *napi,
 			      struct iwl_rx_cmd_buffer *rxb, int queue);
+void iwl_mvm_rx_bar_frame_release(struct iwl_mvm *mvm, struct napi_struct *napi,
+				  struct iwl_rx_cmd_buffer *rxb, int queue);
 int iwl_mvm_notify_rx_queue(struct iwl_mvm *mvm, u32 rxq_mask,
 			    const u8 *data, u32 count, bool async);
 void iwl_mvm_rx_queue_notif(struct iwl_mvm *mvm, struct napi_struct *napi,
@@ -2024,7 +2037,7 @@ void iwl_mvm_vif_set_low_latency(struct iwl_mvm_vif *mvmvif, bool set,
  */
 static inline u32 iwl_mvm_flushable_queues(struct iwl_mvm *mvm)
 {
-	return ((BIT(mvm->cfg->base_params->num_of_queues) - 1) &
+	return ((BIT(mvm->trans->trans_cfg->base_params->num_of_queues) - 1) &
 		~BIT(IWL_MVM_DQA_CMD_QUEUE));
 }
 
