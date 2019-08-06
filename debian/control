@@ -22,9 +22,9 @@ Provides: iwlwifi-modules
 XB-Modaliases: ${modaliases}
 Description: iwlwifi driver backport in DKMS format
  Intel works with periodic releases of the iwlwifi driver that are
- tested with a specific combination of components. They are called
- LinuxCore releases and are numbered sequentially, e.g. LinuxCore11
- is the latest stable release as of May 2015.
+ tested with a specific combination of components such as firmware and
+ hostap. These releases can be seen as snapshots of the development
+ trees (including upstream) that can be used on older kernels.
  .
  This package provides iwlwifi modules built from iwlwifi-public
  defconfig based on upstream master branch.
