@@ -1,0 +1,44 @@
+From: You-Sheng Yang <vicamo@gmail.com>
+Date: Mon, 15 Jul 2019 18:56:31 +0800
+Subject: backport: apply __copy to init_module/cleanup_module
+
+---
+ backport-include/linux/compiler.h | 4 ++++
+ backport-include/linux/module.h   | 4 ++--
+ 2 files changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/backport-include/linux/compiler.h b/backport-include/linux/compiler.h
+index 53c069d..adc5a24 100644
+--- a/backport-include/linux/compiler.h
++++ b/backport-include/linux/compiler.h
+@@ -92,4 +92,8 @@ static __always_inline void __write_once_size(volatile void *p, void *res, int s
+ #define OPTIMIZER_HIDE_VAR(var) barrier()
+ #endif
+ 
++#ifndef __copy
++#define __copy(x)
++#endif
++
+ #endif /* __BACKPORT_LINUX_COMPILER_H */
+diff --git a/backport-include/linux/module.h b/backport-include/linux/module.h
+index 1a2c82f..877491e 100644
+--- a/backport-include/linux/module.h
++++ b/backport-include/linux/module.h
+@@ -33,7 +33,7 @@ extern void backport_dependency_symbol(void);
+ 		backport_dependency_symbol();				\
+ 		return initfn();					\
+ 	}								\
+-	int init_module(void) __attribute__((alias("__init_backport")));\
++	int init_module(void) __copy(__init_backport) __attribute__((alias("__init_backport")));\
+ 	BACKPORT_MOD_VERSIONS
+ 
+ /*
+@@ -58,7 +58,7 @@ extern void backport_dependency_symbol(void);
+ 		exitfn();						\
+ 		rcu_barrier();						\
+ 	}								\
+-	void cleanup_module(void) __attribute__((alias("__exit_compat")));
++	void cleanup_module(void) __copy(__exit_compat) __attribute__((alias("__exit_compat")));
+ #endif
+ 
+ #if LINUX_VERSION_IS_LESS(3,3,0)
