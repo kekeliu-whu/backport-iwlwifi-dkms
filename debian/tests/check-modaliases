@@ -15,7 +15,8 @@ run_pkg() {
         return
     fi
 
-    if ! modaliases=$(dpkg-query --show -f '${Modaliases}' $pkg); then
+    modaliases=$(dpkg-query --show -f '${Modaliases}' $pkg)
+    if test -z "$modaliases"; then
         echo "I: Package $pkg has no modaliases, skipping"
         return
     fi
