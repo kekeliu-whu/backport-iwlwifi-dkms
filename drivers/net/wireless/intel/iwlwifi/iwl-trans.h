@@ -550,7 +550,7 @@ struct iwl_trans_ops {
 	void (*fw_alive)(struct iwl_trans *trans, u32 scd_addr);
 	void (*stop_device)(struct iwl_trans *trans);
 
-	void (*d3_suspend)(struct iwl_trans *trans, bool test, bool reset);
+	int (*d3_suspend)(struct iwl_trans *trans, bool test, bool reset);
 	int (*d3_resume)(struct iwl_trans *trans, enum iwl_d3_status *status,
 			 bool test, bool reset);
 
@@ -663,6 +663,19 @@ enum iwl_plat_pm_mode {
 	IWL_PLAT_PM_MODE_D3,
 };
 
+/**
+ * enum iwl_ini_cfg_state
+ * @IWL_INI_CFG_STATE_NOT_LOADED: no debug cfg was given
+ * @IWL_INI_CFG_STATE_LOADED: debug cfg was found and loaded
+ * @IWL_INI_CFG_STATE_CORRUPTED: debug cfg was found and some of the TLVs
+ *	are corrupted. The rest of the debug TLVs will still be used
+ */
+enum iwl_ini_cfg_state {
+	IWL_INI_CFG_STATE_NOT_LOADED,
+	IWL_INI_CFG_STATE_LOADED,
+	IWL_INI_CFG_STATE_CORRUPTED,
+};
+
 /* Max time to wait for nmi interrupt */
 #define IWL_TRANS_NMI_TIMEOUT (HZ / 4 * CPTCFG_IWL_TIMEOUT_FACTOR)
 
@@ -676,6 +689,16 @@ struct iwl_dram_data {
 	dma_addr_t physical;
 	void *block;
 	int size;
+};
+
+/**
+ * struct iwl_fw_mon - fw monitor per allocation id
+ * @num_frags: number of fragments
+ * @frags: an array of DRAM buffer fragments
+ */
+struct iwl_fw_mon {
+	u32 num_frags;
+	struct iwl_dram_data *frags;
 };
 
 /**
@@ -704,13 +727,19 @@ struct iwl_self_init_dram {
  * @umac_error_event_table: addr of umac error table
  * @error_event_table_tlv_status: bitmap that indicates what error table
  *	pointers was recevied via TLV. uses enum &iwl_error_event_table_status
- * @external_ini_loaded: indicates if an external ini cfg was given
- * @ini_valid: indicates if debug ini mode is on
- * @num_blocks: number of blocks in fw_mon
- * @fw_mon: address of the buffers for firmware monitor
- * @is_alloc: bit i is set if buffer i was allocated
+ * @internal_ini_cfg: internal debug cfg state. Uses &enum iwl_ini_cfg_state
+ * @external_ini_cfg: external debug cfg state. Uses &enum iwl_ini_cfg_state
+ * @fw_mon_cfg: debug buffer allocation configuration
+ * @fw_mon_ini: DRAM buffer fragments per allocation id
+ * @fw_mon: DRAM buffer for firmware monitor
  * @hw_error: equals true if hw error interrupt was received from the FW
  * @ini_dest: debug monitor destination uses &enum iwl_fw_ini_buffer_location
+ * @active_regions: active regions
+ * @debug_info_tlv_list: list of debug info TLVs
+ * @time_point: array of debug time points
+ * @periodic_trig_list: periodic triggers list
+ * @domains_bitmap: bitmap of active domains other than
+ *	&IWL_FW_INI_DOMAIN_ALWAYS_ON
  */
 struct iwl_trans_debug {
 	u8 n_dest_reg;
@@ -724,18 +753,24 @@ struct iwl_trans_debug {
 	u32 umac_error_event_table;
 	unsigned int error_event_table_tlv_status;
 
-	bool external_ini_loaded;
-	bool ini_valid;
+	enum iwl_ini_cfg_state internal_ini_cfg;
+	enum iwl_ini_cfg_state external_ini_cfg;
 
-	struct iwl_apply_point_data apply_points[IWL_FW_INI_APPLY_NUM];
-	struct iwl_apply_point_data apply_points_ext[IWL_FW_INI_APPLY_NUM];
+	struct iwl_fw_ini_allocation_tlv fw_mon_cfg[IWL_FW_INI_ALLOCATION_NUM];
+	struct iwl_fw_mon fw_mon_ini[IWL_FW_INI_ALLOCATION_NUM];
 
-	int num_blocks;
-	struct iwl_dram_data fw_mon[IWL_FW_INI_ALLOCATION_NUM];
-	u32 is_alloc;
+	struct iwl_dram_data fw_mon;
 
 	bool hw_error;
 	enum iwl_fw_ini_buffer_location ini_dest;
+
+	struct iwl_ucode_tlv *active_regions[IWL_FW_INI_MAX_REGION_ID];
+	struct list_head debug_info_tlv_list;
+	struct iwl_dbg_tlv_time_point_data
+		time_point[IWL_FW_INI_TIME_POINT_NUM];
+	struct list_head periodic_trig_list;
+
+	u32 domains_bitmap;
 };
 
 /**
@@ -743,6 +778,7 @@ struct iwl_trans_debug {
  *
  * @ops - pointer to iwl_trans_ops
  * @op_mode - pointer to the op_mode
+ * @trans_cfg: the trans-specific configuration part
  * @cfg - pointer to the configuration
  * @drv - pointer to iwl_drv
  * @status: a bit-mask of transport status flags
@@ -774,6 +810,7 @@ struct iwl_trans_debug {
 struct iwl_trans {
 	const struct iwl_trans_ops *ops;
 	struct iwl_op_mode *op_mode;
+	const struct iwl_cfg_trans_params *trans_cfg;
 	const struct iwl_cfg *cfg;
 	struct iwl_drv *drv;
 	struct iwl_tm_gnl_dev *tmdev;
@@ -822,6 +859,11 @@ struct iwl_trans {
 #ifdef CPTCFG_IWLWIFI_DEVICE_TESTMODE
 	struct iwl_testmode testmode;
 #endif
+
+	u32 lmac_error_event_table[2];
+	u32 umac_error_event_table;
+	unsigned int error_event_table_tlv_status;
+	bool hw_error;
 
 	/* pointer to trans specific struct */
 	/*Ensure that this pointer will always be aligned to sizeof pointer */
@@ -914,12 +956,14 @@ static inline void iwl_trans_stop_device(struct iwl_trans *trans)
 	trans->state = IWL_TRANS_NO_FW;
 }
 
-static inline void iwl_trans_d3_suspend(struct iwl_trans *trans, bool test,
-					bool reset)
+static inline int iwl_trans_d3_suspend(struct iwl_trans *trans, bool test,
+				       bool reset)
 {
 	might_sleep();
-	if (trans->ops->d3_suspend)
-		trans->ops->d3_suspend(trans, test, reset);
+	if (!trans->ops->d3_suspend)
+		return 0;
+
+	return trans->ops->d3_suspend(trans, test, reset);
 }
 
 static inline int iwl_trans_d3_resume(struct iwl_trans *trans,
@@ -1276,12 +1320,17 @@ static inline void iwl_trans_sync_nmi(struct iwl_trans *trans)
 		trans->ops->sync_nmi(trans);
 }
 
+static inline bool iwl_trans_dbg_ini_valid(struct iwl_trans *trans)
+{
+	return trans->dbg.internal_ini_cfg != IWL_INI_CFG_STATE_NOT_LOADED ||
+		trans->dbg.external_ini_cfg != IWL_INI_CFG_STATE_NOT_LOADED;
+}
+
 /*****************************************************
  * transport helper functions
  *****************************************************/
 struct iwl_trans *iwl_trans_alloc(unsigned int priv_size,
 				  struct device *dev,
-				  const struct iwl_cfg *cfg,
 				  const struct iwl_trans_ops *ops);
 void iwl_trans_free(struct iwl_trans *trans);
 

@@ -1,0 +1,25 @@
+From: You-Sheng Yang <vicamo@gmail.com>
+Date: Mon, 15 Jul 2019 20:05:54 +0800
+Subject: kbuild: add -fcf-protection=none when using retpoline flags
+
+See
+https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=29be86d7f9cb18df4123f309ac7857570513e8bc
+---
+ Makefile.kernel | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/Makefile.kernel b/Makefile.kernel
+index 3274949..4ee9f2f 100644
+--- a/Makefile.kernel
++++ b/Makefile.kernel
+@@ -10,6 +10,10 @@ KBUILD_CFLAGS := $(KBUILD_CFLAGS) -Wformat-security \
+ 	$(call backport-cc-disable-error, date-time) \
+ 	$(call backport-cc-disable-warning, date-time)
+ 
++ifdef CONFIG_RETPOLINE
++KBUILD_CFLAGS += $(call cc-option,-fcf-protection=none)
++endif
++
+ NOSTDINC_FLAGS := \
+ 	-I$(M)/backport-include/ \
+ 	-I$(M)/backport-include/uapi \

@@ -1,67 +1,17 @@
-backport-iwlwifi-dkms (7906-ubuntu1) xenial; urgency=low
+backport-iwlwifi-dkms (7986-0ubuntu1) xenial; urgency=low
 
-  * Sync with debian 7906-1.
+  * Sync with upstream HEAD commit 4d1a7371ca7a58.
 
- -- You-Sheng Yang <vicamo@gmail.com>  Tue, 9 Jul 2019 16:35:22 +0800
+ -- You-Sheng Yang <vicamo@gmail.com>  Fri, 09 Aug 2019 11:18:23 +0800
 
-backport-iwlwifi-dkms (7858-ubuntu2) UNRELEASED; urgency=low
+backport-iwlwifi-dkms (7958-0ubuntu1) xenial; urgency=low
 
-  * Fix build on recent kernel that removes *.lex.c and *.tab.c at clean
-    stage.
-  * Switch to non-native build.
+  * Sync with upstream HEAD commit fa9d3999e70b7d.
 
- -- You-Sheng Yang <vicamo@gmail.com>  Tue, 25 Jun 2019 18:41:42 +0800
+ -- You-Sheng Yang <vicamo@gmail.com>  Wed, 07 Aug 2019 14:01:14 +0800
 
-backport-iwlwifi-dkms (7858-ubuntu1) UNRELEASED; urgency=low
+backport-iwlwifi-dkms (7906-0ubuntu1) xenial; urgency=low
 
-  * sync with debian 7858.
+  * Initial release (LP: #1835858)
 
- -- You-Sheng Yang <vicamo@gmail.com>  Fri, 21 Jun 2019 15:27:31 +0800
-
-backport-iwlwifi-dkms (7841-ubuntu2) UNRELEASED; urgency=low
-
-  * add modalias support.
-
- -- You-Sheng Yang <vicamo@gmail.com>  Fri, 14 Jun 2019 19:34:47 +0800
-
-backport-iwlwifi-dkms (7841-ubuntu1) UNRELEASED; urgency=low
-
-  * sync with debian 7841.
-
- -- You-Sheng Yang <vicamo@gmail.com>  Fri, 14 Jun 2019 18:14:21 +0800
-
-backport-iwlwifi-dkms (7815-ubuntu1) UNRELEASED; urgency=low
-
-  * sync with debian 7815.
-  * drop
-    0001-UBUNTU-SAUCE-iwlwifi-trans-fix-killer-series-loadded-incor.patch:
-    this has been fixed by upstream commit f9c164492c3a.
-
- -- You-Sheng Yang <vicamo@gmail.com>  Fri, 14 Jun 2019 17:57:17 +0800
-
-backport-iwlwifi-dkms (7744-ubuntu3) UNRELEASED; urgency=low
-
-  * sync with debian 7744+deb1.
-  * use CI definitions from salsa-ci-team/pipeline
-  * add dependency to libc-dev
-  * rewrite debian/rules a bit
-
- -- You-Sheng Yang <vicamo@gmail.com>  Thu, 30 May 2019 16:02:20 +0800
-
-backport-iwlwifi-dkms (7744-ubuntu2) UNRELEASED; urgency=low
-
-  * Use DEB_VERSION_UPSTREAM for installed dkms source.
-
- -- You-Sheng Yang <vicamo@gmail.com>  Thu, 30 May 2019 16:02:20 +0800
-
-backport-iwlwifi-dkms (7744-ubuntu1) UNRELEASED; urgency=low
-
-  * Close lp:1830822.
-
- -- You-Sheng Yang <vicamo@gmail.com>  Tue, 28 May 2019 15:53:12 +0800
-
-backport-iwlwifi-dkms (7744) UNRELEASED; urgency=low
-
-  * Initial release (Closes: 929692)
-
- -- You-Sheng Yang <vicamo@gmail.com>  Thu, 23 May 2019 14:10:43 +0800
+ -- You-Sheng Yang <vicamo@gmail.com>  Tue, 06 Aug 2019 18:46:53 +0800
