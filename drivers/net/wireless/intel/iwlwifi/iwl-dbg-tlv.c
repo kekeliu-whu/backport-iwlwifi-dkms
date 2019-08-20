@@ -162,7 +162,6 @@ static int iwl_dbg_tlv_alloc_buf_alloc(struct iwl_trans *trans,
 				       struct iwl_ucode_tlv *tlv)
 {
 	struct iwl_fw_ini_allocation_tlv *alloc = (void *)tlv->data;
-	struct iwl_fw_ini_allocation_tlv *fw_mon_cfg;
 	u32 buf_location = le32_to_cpu(alloc->buf_location);
 	u32 alloc_id = le32_to_cpu(alloc->alloc_id);
 
@@ -182,8 +181,7 @@ static int iwl_dbg_tlv_alloc_buf_alloc(struct iwl_trans *trans,
 		return -EINVAL;
 	}
 
-	fw_mon_cfg = &trans->dbg.fw_mon_cfg[alloc_id];
-	memcpy(fw_mon_cfg, alloc, sizeof(*fw_mon_cfg));
+	trans->dbg.fw_mon_cfg[alloc_id] = *alloc;
 
 	return 0;
 }
@@ -242,13 +240,11 @@ static int iwl_dbg_tlv_alloc_region(struct iwl_trans *trans,
 		kfree(*active_reg);
 	}
 
-	*active_reg = kmalloc(tlv_len, GFP_KERNEL);
+	*active_reg = kmemdup(tlv, tlv_len, GFP_KERNEL);
 	if (!*active_reg)
 		return -ENOMEM;
 
 	IWL_DEBUG_FW(trans, "WRT: Enabling region id %u type %u\n", id, type);
-
-	memcpy(*active_reg, tlv, tlv_len);
 
 	return 0;
 }
