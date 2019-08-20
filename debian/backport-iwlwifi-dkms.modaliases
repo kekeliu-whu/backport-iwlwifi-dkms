@@ -14,6 +14,7 @@ alias pci:v00008086d00002725sv*sd00000310bc*sc*i* iwlwifi
 alias pci:v00008086d00002725sv*sd00000020bc*sc*i* iwlwifi
 alias pci:v00008086d00002725sv*sd00000090bc*sc*i* iwlwifi
 alias pci:v00008086d00002723sv*sd00004088bc*sc*i* iwlwifi
+alias pci:v00008086d00002725sv*sd00000000bc*sc*i* iwlwifi
 alias pci:v00008086d00002723sv*sd00004080bc*sc*i* iwlwifi
 alias pci:v00008086d00002723sv*sd00002080bc*sc*i* iwlwifi
 alias pci:v00008086d00002723sv*sd00001654bc*sc*i* iwlwifi
