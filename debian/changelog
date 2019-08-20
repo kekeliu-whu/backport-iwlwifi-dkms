@@ -1,3 +1,9 @@
+backport-iwlwifi-dkms (8038-0ubuntu1) eoan; urgency=low
+
+  * Sync with upstream HEAD commit 033a3f2727e980.
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Tue, 20 Aug 2019 14:37:04 +0800
+
 backport-iwlwifi-dkms (7986-0ubuntu1) eoan; urgency=low
 
   * Sync with upstream HEAD commit 4d1a7371ca7a58.
