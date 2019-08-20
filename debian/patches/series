@@ -1,5 +1,4 @@
 0001-keep-zconf-in-make-clean.patch
 0002-fix-format-overflow-compile-error-in-kconf-confdata..patch
 0003-backport-apply-__copy-to-init_module-cleanup_module.patch
-0004-backport-fix-build-for-v5.2-kernel.patch
 0005-Makefile.kernel-pass-fno-stack-clash-protection-and-.patch
