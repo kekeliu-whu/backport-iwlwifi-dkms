@@ -243,7 +243,7 @@ static void iwl_fw_dump_rxf(struct iwl_fw_runtime *fwrt,
 		/* Pull RXF2 */
 		iwl_fwrt_dump_rxf(fwrt, dump_data, cfg->rxfifo2_size,
 				  RXF_DIFF_FROM_PREV +
-				  fwrt->trans->cfg->umac_prph_offset, 1);
+				  fwrt->trans->trans_cfg->umac_prph_offset, 1);
 		/* Pull LMAC2 RXF1 */
 		if (fwrt->smem_cfg.num_lmacs > 1)
 			iwl_fwrt_dump_rxf(fwrt, dump_data,
@@ -1846,7 +1846,7 @@ static u32 iwl_dump_ini_mem(struct iwl_fw_runtime *fwrt, struct list_head *list,
 	if (!size)
 		return 0;
 
-	entry = kmalloc(sizeof(*entry) + sizeof(*tlv) + size, GFP_KERNEL);
+	entry = vzalloc(sizeof(*entry) + sizeof(*tlv) + size);
 	if (!entry)
 		return 0;
 
@@ -1892,7 +1892,7 @@ static u32 iwl_dump_ini_mem(struct iwl_fw_runtime *fwrt, struct list_head *list,
 	return entry->size;
 
 out_err:
-	kfree(entry);
+	vfree(entry);
 
 	return 0;
 }
@@ -1914,7 +1914,7 @@ static u32 iwl_dump_ini_info(struct iwl_fw_runtime *fwrt,
 		num_of_cfg_names++;
 	}
 
-	entry = kmalloc(sizeof(*entry) + size, GFP_KERNEL);
+	entry = vzalloc(sizeof(*entry) + size);
 	if (!entry)
 		return 0;
 
@@ -2121,7 +2121,7 @@ static u32 iwl_dump_ini_file_gen(struct iwl_fw_runtime *fwrt,
 	    !le64_to_cpu(trigger->regions_mask))
 		return 0;
 
-	entry = kmalloc(sizeof(*entry) + sizeof(*hdr), GFP_KERNEL);
+	entry = vzalloc(sizeof(*entry) + sizeof(*hdr));
 	if (!entry)
 		return 0;
 
@@ -2129,7 +2129,7 @@ static u32 iwl_dump_ini_file_gen(struct iwl_fw_runtime *fwrt,
 
 	size = iwl_dump_ini_trigger(fwrt, dump_data, list);
 	if (!size) {
-		kfree(entry);
+		vfree(entry);
 		return 0;
 	}
 
@@ -2195,7 +2195,7 @@ static void iwl_dump_ini_list_free(struct list_head *list)
 			list_entry(list->next, typeof(*entry), list);
 
 		list_del(&entry->list);
-		kfree(entry);
+		vfree(entry);
 	}
 }
 
@@ -2379,8 +2379,7 @@ int iwl_fw_dbg_ini_collect(struct iwl_fw_runtime *fwrt,
 	    test_and_set_bit(fwrt->dump.wks[idx].idx, &fwrt->dump.active_wks))
 		return -EBUSY;
 
-	memcpy(&fwrt->dump.wks[idx].dump_data, dump_data,
-	       sizeof(fwrt->dump.wks[idx].dump_data));
+	fwrt->dump.wks[idx].dump_data = *dump_data;
 
 	IWL_WARN(fwrt, "WRT: Collecting data: ini trigger %d fired.\n", tp_id);
 
