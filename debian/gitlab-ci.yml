@@ -1,6 +1,6 @@
 include:
-  - https://salsa.debian.org/salsa-ci-team/pipeline/raw/master/salsa-ci.yml
-  - https://salsa.debian.org/salsa-ci-team/pipeline/raw/master/pipeline-jobs.yml
+  - https://gitlab.com/hustle-ci/pipeline/raw/debian/salsa-ci.yml
+  - https://gitlab.com/hustle-ci/pipeline/raw/debian/pipeline-jobs.yml
 
 variables:
   RELEASE: 'unstable'
