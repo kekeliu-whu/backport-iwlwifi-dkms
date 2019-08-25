@@ -1,4 +1,4 @@
-backport-iwlwifi-dkms (8042-1) bullseye; urgency=low
+backport-iwlwifi-dkms (8042-1) buster; urgency=low
 
   * Sync with upstream HEAD commit 590e94cdd00782.
 
