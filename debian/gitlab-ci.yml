@@ -3,5 +3,5 @@ include:
   - https://gitlab.com/hustle-ci/pipeline/raw/debian/pipeline-jobs.yml
 
 variables:
-  RELEASE: 'buster'
+  RELEASE: 'stretch'
   SALSA_CI_DISABLE_APTLY: 'false'
