@@ -1,3 +1,13 @@
+backport-iwlwifi-dkms (7906-0ubuntu2) focal; urgency=low
+
+  * debian/patches/0006-NOUPSTREAM-backport-rename-ktime_get_boot_ns-for-v5..patch
+    - fix build against v5.3. (LP: #1848922)
+  * debian/patches/0005-Makefile.kernel-pass-fno-stack-clash-protection-and-.patch
+    - add -fcf-protection=none when using retpoline flags. (LP: #1830961)
+    - drop -fno-stack-clash-protection for it's no longer necessary.
+
+ -- You-Sheng Yang <vicamo.yang@canonical.com>  Mon, 21 Oct 2019 20:22:27 +0800
+
 backport-iwlwifi-dkms (7906-0ubuntu1) eoan; urgency=low
 
   * Initial release (LP: #1835858)
