@@ -3,3 +3,4 @@
 0003-backport-apply-__copy-to-init_module-cleanup_module.patch
 0004-backport-fix-build-for-v5.2-kernel.patch
 0005-Makefile.kernel-pass-fno-stack-clash-protection-and-.patch
+0006-NOUPSTREAM-backport-rename-ktime_get_boot_ns-for-v5..patch
