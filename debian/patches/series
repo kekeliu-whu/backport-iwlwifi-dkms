@@ -8,3 +8,4 @@
 0010-NOUPSTREAM-cfg80211-use-parallel_ops-for-genl.patch
 0011-backports-netlink-fix-nla_validate_nested.patch
 0012-netlink-rename-nl80211_validate_nested-to-nla_valida.patch
+0013-ftrace-Rework-event_create_dir.patch
