@@ -1247,8 +1247,8 @@ static ssize_t iwl_dbgfs_inject_packet_write(struct iwl_mvm *mvm,
 	struct iwl_rx_mpdu_desc *desc;
 	int bin_len = count / 2;
 	int ret = -EINVAL;
-	size_t mpdu_cmd_hdr_size =
-		(mvm->trans->cfg->device_family >= IWL_DEVICE_FAMILY_22560) ?
+	size_t mpdu_cmd_hdr_size = (mvm->trans->trans_cfg->device_family >=
+				    IWL_DEVICE_FAMILY_22560) ?
 		sizeof(struct iwl_rx_mpdu_desc) :
 		IWL_RX_DESC_SIZE_V1;
 
@@ -1256,7 +1256,7 @@ static ssize_t iwl_dbgfs_inject_packet_write(struct iwl_mvm *mvm,
 		return -EIO;
 
 	/* supporting only 9000 descriptor */
-	if (!mvm->trans->cfg->mq_rx_supported)
+	if (!mvm->trans->trans_cfg->mq_rx_supported)
 		return -ENOTSUPP;
 
 	rxb._page = alloc_pages(GFP_ATOMIC, 0);
@@ -1448,6 +1448,9 @@ static ssize_t iwl_dbgfs_fw_dbg_collect_write(struct iwl_mvm *mvm,
 {
 	if (count == 0)
 		return 0;
+
+	iwl_dbg_tlv_time_point(&mvm->fwrt, IWL_FW_INI_TIME_POINT_USER_TRIGGER,
+			       NULL);
 
 	iwl_fw_dbg_collect(&mvm->fwrt, FW_DBG_TRIGGER_USER, buf,
 			   (count - 1), NULL);

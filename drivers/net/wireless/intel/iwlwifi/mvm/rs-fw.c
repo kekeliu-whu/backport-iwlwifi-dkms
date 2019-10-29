@@ -341,16 +341,24 @@ void iwl_mvm_tlc_update_notif(struct iwl_mvm *mvm,
 	lq_sta = &mvmsta->lq_sta.rs_fw;
 
 	if (flags & IWL_TLC_NOTIF_FLAG_RATE) {
+		char pretty_rate[100];
 		lq_sta->last_rate_n_flags = le32_to_cpu(notif->rate);
-		IWL_DEBUG_RATE(mvm, "new rate_n_flags: 0x%X\n",
-			       lq_sta->last_rate_n_flags);
+		rs_pretty_print_rate(pretty_rate, sizeof(pretty_rate),
+				     lq_sta->last_rate_n_flags);
+		IWL_DEBUG_RATE(mvm, "new rate: %s\n", pretty_rate);
 	}
 
 	if (flags & IWL_TLC_NOTIF_FLAG_AMSDU && !mvmsta->orig_amsdu_len) {
 		u16 size = le32_to_cpu(notif->amsdu_size);
 		int i;
 
-		if (WARN_ON(sta->max_amsdu_len < size))
+		/*
+		 * In debug sta->max_amsdu_len < size
+		 * so also check with orig_amsdu_len which holds the original
+		 * data before debugfs changed the value
+		 */
+		if (WARN_ON(sta->max_amsdu_len < size &&
+			    mvmsta->orig_amsdu_len < size))
 			goto out;
 
 		mvmsta->amsdu_enabled = le32_to_cpu(notif->amsdu_enabled);
@@ -378,7 +386,7 @@ out:
 	rcu_read_unlock();
 }
 
-static u16 rs_fw_get_max_amsdu_len(struct ieee80211_sta *sta)
+u16 rs_fw_get_max_amsdu_len(struct ieee80211_sta *sta)
 {
 	const struct ieee80211_sta_vht_cap *vht_cap = &sta->vht_cap;
 	const struct ieee80211_sta_ht_cap *ht_cap = &sta->ht_cap;
@@ -438,12 +446,16 @@ void rs_fw_rate_init(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 	rs_fw_set_supp_rates(sta, sband, &cfg_cmd);
 #ifdef CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES
 	/*
-	 * if AP disables mimo on 160bw (cmd->ht_rates[1][1] == 0
+	 * if AP disables mimo on 160bw
+	 * (!cfg_cmd.ht_rates[IWL_TLC_NSS_2][IWL_TLC_HT_BW_160])
+	 * and AP enables siso on 160
+	 * cfg_cmd.ht_rates[IWL_TLC_NSS_1][IWL_TLC_HT_BW_160]
 	 * we disable mimo on 80bw cmd->ht_rates[1][0]
 	 */
 	if (mvm->trans->dbg_cfg.tx_siso_80bw_like_160bw &&
-	    !cfg_cmd.ht_rates[1][1])
-		cfg_cmd.ht_rates[1][0] = 0;
+	    cfg_cmd.ht_rates[IWL_TLC_NSS_1][IWL_TLC_HT_BW_160] &&
+	    !cfg_cmd.ht_rates[IWL_TLC_NSS_2][IWL_TLC_HT_BW_160])
+		cfg_cmd.ht_rates[IWL_TLC_NSS_2][IWL_TLC_HT_BW_NONE_160] = 0;
 
 #endif
 

@@ -195,7 +195,7 @@ static void iwl_mvm_nic_config(struct iwl_op_mode *op_mode)
 	 * unrelated errors. Need to further investigate this, but for now
 	 * we'll separate cases.
 	 */
-	if (mvm->trans->cfg->device_family < IWL_DEVICE_FAMILY_8000)
+	if (mvm->trans->trans_cfg->device_family < IWL_DEVICE_FAMILY_8000)
 		reg_val |= CSR_HW_IF_CONFIG_REG_BIT_RADIO_SI;
 
 	if (iwl_fw_dbg_is_d3_debug_enabled(&mvm->fwrt))
@@ -292,6 +292,8 @@ static const struct iwl_rx_handlers iwl_mvm_rx_handlers[] = {
 
 	RX_HANDLER(TIME_EVENT_NOTIFICATION, iwl_mvm_rx_time_event_notif,
 		   RX_HANDLER_SYNC),
+	RX_HANDLER_GRP(MAC_CONF_GROUP, SESSION_PROTECTION_NOTIF,
+		       iwl_mvm_rx_session_protect_notif, RX_HANDLER_SYNC),
 	RX_HANDLER(MCC_CHUB_UPDATE_CMD, iwl_mvm_rx_chub_update_mcc,
 		   RX_HANDLER_ASYNC_LOCKED),
 
@@ -436,6 +438,7 @@ static const struct iwl_hcmd_names iwl_mvm_legacy_names[] = {
 	HCMD_NAME(SCAN_ITERATION_COMPLETE_UMAC),
 	HCMD_NAME(REPLY_RX_PHY_CMD),
 	HCMD_NAME(REPLY_RX_MPDU_CMD),
+	HCMD_NAME(BAR_FRAME_RELEASE),
 	HCMD_NAME(FRAME_RELEASE),
 	HCMD_NAME(BA_NOTIF),
 	HCMD_NAME(MCC_UPDATE_CMD),
@@ -480,6 +483,8 @@ static const struct iwl_hcmd_names iwl_mvm_system_names[] = {
  */
 static const struct iwl_hcmd_names iwl_mvm_mac_conf_names[] = {
 	HCMD_NAME(CHANNEL_SWITCH_TIME_EVENT_CMD),
+	HCMD_NAME(SESSION_PROTECTION_CMD),
+	HCMD_NAME(SESSION_PROTECTION_NOTIF),
 	HCMD_NAME(CHANNEL_SWITCH_NOA_NOTIF),
 };
 
@@ -516,6 +521,7 @@ static const struct iwl_hcmd_names iwl_mvm_data_path_names[] = {
  */
 static const struct iwl_hcmd_names iwl_mvm_debug_names[] = {
 	HCMD_NAME(DBGC_SUSPEND_RESUME),
+	HCMD_NAME(BUFFER_ALLOCATION),
 	HCMD_NAME(MFU_ASSERT_DUMP_NTF),
 };
 
@@ -700,7 +706,6 @@ static int iwl_mvm_tm_send_hcmd(void *op_mode, struct iwl_host_cmd *host_cmd)
 }
 #endif
 
-#ifdef CPTCFG_IWLMVM_VENDOR_CMDS
 static u8 iwl_mvm_lookup_notif_ver(struct iwl_mvm *mvm, u8 grp, u8 cmd, u8 def)
 {
 	const struct iwl_fw_cmd_version *entry;
@@ -721,7 +726,6 @@ static u8 iwl_mvm_lookup_notif_ver(struct iwl_mvm *mvm, u8 grp, u8 cmd, u8 def)
 
 	return def;
 }
-#endif
 
 static struct iwl_op_mode *
 iwl_op_mode_mvm_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
@@ -787,7 +791,7 @@ iwl_op_mode_mvm_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 	if (iwl_mvm_has_new_rx_api(mvm)) {
 		op_mode->ops = &iwl_mvm_ops_mq;
 		trans->rx_mpdu_cmd_hdr_size =
-			(trans->cfg->device_family >=
+			(trans->trans_cfg->device_family >=
 			 IWL_DEVICE_FAMILY_22560) ?
 			sizeof(struct iwl_rx_mpdu_desc) :
 			IWL_RX_DESC_SIZE_V1;
@@ -873,6 +877,11 @@ iwl_op_mode_mvm_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 	if (WARN_ON_ONCE(mvm->cmd_ver.csi_notif > 2))
 		goto out_free;
 #endif
+	mvm->cmd_ver.d0i3_resp =
+		iwl_mvm_lookup_notif_ver(mvm, LEGACY_GROUP, D0I3_END_CMD, 0);
+	/* we only support version 1 */
+	if (WARN_ON_ONCE(mvm->cmd_ver.d0i3_resp > 1))
+		goto out_free;
 
 	/*
 	 * Populate the state variables that the transport layer needs
@@ -882,7 +891,7 @@ iwl_op_mode_mvm_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 	trans_cfg.no_reclaim_cmds = no_reclaim_cmds;
 	trans_cfg.n_no_reclaim_cmds = ARRAY_SIZE(no_reclaim_cmds);
 
-	if (mvm->trans->cfg->device_family >= IWL_DEVICE_FAMILY_22560)
+	if (mvm->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_22560)
 		rb_size_default = IWL_AMSDU_2K;
 	else
 		rb_size_default = IWL_AMSDU_4K;
@@ -906,12 +915,9 @@ iwl_op_mode_mvm_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 		trans_cfg.rx_buf_size = rb_size_default;
 	}
 
-	BUILD_BUG_ON(sizeof(struct iwl_ldbg_config_cmd) !=
-		     LDBG_CFG_COMMAND_SIZE);
-
 	trans->wide_cmd_header = true;
 	trans_cfg.bc_table_dword =
-		mvm->trans->cfg->device_family < IWL_DEVICE_FAMILY_22560;
+		mvm->trans->trans_cfg->device_family < IWL_DEVICE_FAMILY_22560;
 
 	trans_cfg.command_groups = iwl_mvm_groups;
 	trans_cfg.command_groups_size = ARRAY_SIZE(iwl_mvm_groups);
@@ -1172,7 +1178,10 @@ static void iwl_mvm_rx_common(struct iwl_mvm *mvm,
 			      struct iwl_rx_packet *pkt)
 {
 	int i;
+	union iwl_dbg_tlv_tp_data tp_data = { .fw_pkt = pkt };
 
+	iwl_dbg_tlv_time_point(&mvm->fwrt,
+			       IWL_FW_INI_TIME_POINT_FW_RSP_OR_NOTIF, &tp_data);
 	iwl_mvm_rx_check_trigger(mvm, pkt);
 
 	/*
@@ -1263,6 +1272,8 @@ static void iwl_mvm_rx_mq(struct iwl_op_mode *op_mode,
 		iwl_mvm_rx_queue_notif(mvm, napi, rxb, 0);
 	else if (cmd == WIDE_ID(LEGACY_GROUP, FRAME_RELEASE))
 		iwl_mvm_rx_frame_release(mvm, napi, rxb, 0);
+	else if (cmd == WIDE_ID(LEGACY_GROUP, BAR_FRAME_RELEASE))
+		iwl_mvm_rx_bar_frame_release(mvm, napi, rxb, 0);
 	else if (cmd == WIDE_ID(DATA_PATH_GROUP, RX_NO_DATA_NOTIF))
 		iwl_mvm_rx_monitor_no_data(mvm, napi, rxb, 0);
 	else
@@ -1438,7 +1449,7 @@ static void iwl_mvm_reprobe_wk(struct work_struct *wk)
 void iwl_mvm_nic_restart(struct iwl_mvm *mvm, bool fw_error)
 {
 	iwl_abort_notification_waits(&mvm->notif_wait);
-	del_timer(&mvm->fwrt.dump.periodic_trig);
+	iwl_dbg_tlv_del_timers(mvm->trans);
 
 	/*
 	 * This is a bit racy, but worst case we tell mac80211 about

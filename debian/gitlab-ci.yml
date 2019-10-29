@@ -4,3 +4,5 @@ include:
 
 variables:
   RELEASE: 'eoan'
+  SALSA_CI_AUTOPKGTEST_ARGS: '--timeout-install=7200'
+  SALSA_CI_DISABLE_APTLY: 'false'
