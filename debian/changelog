@@ -1,4 +1,4 @@
-backport-iwlwifi-dkms (8042-0ubuntu1) eoan; urgency=low
+backport-iwlwifi-dkms (8042-0ubuntu1) focal; urgency=low
 
   * Sync with upstream HEAD commit 590e94cdd00782.
 
