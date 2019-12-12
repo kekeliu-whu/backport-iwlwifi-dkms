@@ -2,3 +2,4 @@
 0002-fix-format-overflow-compile-error-in-kconf-confdata..patch
 0003-backport-apply-__copy-to-init_module-cleanup_module.patch
 0005-Makefile.kernel-pass-fno-stack-clash-protection-and-.patch
+0006-backport-address-interface-change-in-linux-skbuff.h-.patch
