@@ -14,7 +14,7 @@ run_pkg() {
 
     # collect build logs as artifacts
     if [ -d /var/lib/dkms ]; then
-        (cd /var/lib/dkms; find -name "make.log" -print0 | xargs -0 tar c) > "$ADT_ARTIFACTS/$pkg-make-logs.tar"
+        (cd /var/lib/dkms; find -name "make.log" -print0 | xargs -0 tar c) > "$AUTOPKGTEST_ARTIFACTS/$pkg-make-logs.tar"
     fi
 
     if [ "$RC" -ne 0 ]; then
