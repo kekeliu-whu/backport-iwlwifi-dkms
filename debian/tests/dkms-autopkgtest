@@ -10,7 +10,7 @@ run_pkg() {
     echo "I: Installing binary package $pkg"
     export DEBIAN_FRONTEND=noninteractive
     RC=0
-    apt-get install -yq $pkg </dev/null || RC=$?
+    (set +e; apt-get install -yq $pkg </dev/null) || RC=$?
 
     # collect build logs as artifacts
     if [ -d /var/lib/dkms ]; then
@@ -83,9 +83,6 @@ run_pkg() {
     # done
 }
 
-# Try and remove dkms to spot packages which miss a dkms dependency
-dpkg --remove dkms || true
-
 for pkg in $(awk '/^Package:/ { print $2 }' debian/control); do
     # package might be arch: restriction or udeb etc.
     if ! apt-cache show $pkg >/dev/null 2>&1; then
@@ -94,3 +91,6 @@ for pkg in $(awk '/^Package:/ { print $2 }' debian/control); do
     fi
     run_pkg $pkg
 done
+
+# Try and remove dkms to spot packages which miss a dkms dependency
+dpkg --remove dkms || true
