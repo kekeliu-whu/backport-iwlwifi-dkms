@@ -1,3 +1,10 @@
+backport-iwlwifi-dkms (8042-0ubuntu3) focal; urgency=medium
+
+  * debian/patches/0007-backport-don-t-include-linux-pci-aspm.h-on-kernel-v5..patch
+    - Fix build on Focal v5.4 kernels. (LP: #1856184)
+
+ -- You-Sheng Yang <vicamo.yang@canonical.com>  Fri, 13 Dec 2019 09:06:45 +0000
+
 backport-iwlwifi-dkms (8042-0ubuntu2) focal; urgency=critical
 
   * debian/gbp.conf, debian/gitlab-ci.yml
