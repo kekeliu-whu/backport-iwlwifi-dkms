@@ -349,7 +349,7 @@ struct iwl_umac_error_event_table {
  * @trans: transport data
  */
 struct iwl_xvt_skb_info {
-	struct iwl_device_cmd *dev_cmd;
+	struct iwl_device_tx_cmd *dev_cmd;
 	void *trans[2];
 };
 
@@ -408,6 +408,11 @@ struct iwl_xvt {
 	u64 expected_tx_amount;
 	wait_queue_head_t tx_done_wq;
 	struct tx_queue_data queue_data[IWL_MAX_HW_QUEUES];
+};
+
+union geo_tx_power_profiles_cmd {
+	struct iwl_geo_tx_power_profiles_cmd geo_cmd;
+	struct iwl_geo_tx_power_profiles_cmd_v1 geo_cmd_v1;
 };
 
 #define IWL_OP_MODE_GET_XVT(_op_mode) \
@@ -517,3 +522,5 @@ static inline int iwl_xvt_dbgfs_register(struct iwl_xvt *xvt,
 #endif /* CPTCFG_IWLWIFI_DEBUGFS */
 
 #endif
+
+int iwl_xvt_init_sar_tables(struct iwl_xvt *xvt);
