@@ -1,3 +1,12 @@
+backport-iwlwifi-dkms (8286-1) UNRELEASED; urgency=low
+
+  * Sync with upstream HEAD commit 26271a73a63d24.
+  * debian/patches:
+    - Update 0006-backport-address-interface-change-in-linux-skbuff.h-.patch
+    - Drop 0007-backport-don-t-include-linux-pci-aspm.h-on-kernel-v5..patch
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Wed, 18 Dec 2019 19:43:25 +0800
+
 backport-iwlwifi-dkms (8042-1) UNRELEASED; urgency=low
 
   * Sync with upstream HEAD commit 590e94cdd00782.
