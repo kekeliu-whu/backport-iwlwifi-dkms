@@ -3,11 +3,5 @@ Restrictions:
  needs-root,
  allow-stderr,
 Depends:
- backport-iwlwifi-dkms,
- linux-headers-686-pae | linux-headers-amd64 | linux-headers-generic | linux-headers,
-
-Tests: check-modaliases
-Depends:
- backport-iwlwifi-dkms,
- kmod,
+ gcc,
  linux-headers-686-pae | linux-headers-amd64 | linux-headers-generic | linux-headers,
