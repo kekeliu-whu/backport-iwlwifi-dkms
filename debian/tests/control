@@ -5,9 +5,3 @@ Restrictions:
 Depends:
  backport-iwlwifi-dkms,
  linux-headers-686-pae | linux-headers-amd64 | linux-headers-generic | linux-headers,
-
-Tests: check-modaliases
-Depends:
- backport-iwlwifi-dkms,
- kmod,
- linux-headers-686-pae | linux-headers-amd64 | linux-headers-generic | linux-headers,
