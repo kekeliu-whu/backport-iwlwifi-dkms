@@ -1,6 +1,6 @@
-From 0ed9684f769f127c466599292fd750b07a9b36de Mon Sep 17 00:00:00 2001
+From 436871ec96c59dd238d7a603b1e140e90a232b88 Mon Sep 17 00:00:00 2001
 From: You-Sheng Yang <vicamo.yang@canonical.com>
-Date: Tue, 10 Dec 2019 17:35:29 +0800
+Date: Wed, 18 Dec 2019 22:28:08 +0800
 Subject: [PATCH] backport: address interface change in linux/skbuff.h since
  5.3.10
 
@@ -17,87 +17,50 @@ compatibility to previous releases.
 Closes: vicamo/backport-iwlwifi-dkms#7
 Signed-off-by: You-Sheng Yang <vicamo.yang@canonical.com>
 ---
- include/net/fq.h      | 15 +++++++++++++++
- include/net/fq_impl.h | 30 ++++++++++++++++++++++++++++++
- 2 files changed, 45 insertions(+)
+ include/net/fq.h      | 9 ++++++++-
+ include/net/fq_impl.h | 9 ++++++++-
+ 2 files changed, 16 insertions(+), 2 deletions(-)
 
 diff --git a/include/net/fq.h b/include/net/fq.h
-index d126b5d20..e0de891d6 100644
+index f142ee96b..ec04ae9bc 100644
 --- a/include/net/fq.h
 +++ b/include/net/fq.h
-@@ -69,7 +69,22 @@ struct fq {
- 	struct list_head backlogs;
- 	spinlock_t lock;
- 	u32 flows_cnt;
-+#if LINUX_VERSION_IS_GEQ(5,3,10) || \
-+	LINUX_VERSION_IN_RANGE(4,19,83,5,0,0) || \
-+	LINUX_VERSION_IN_RANGE(4,14,153,4,15,0) || \
-+	LINUX_VERSION_IN_RANGE(4,9,200,4,10,0) || \
-+	LINUX_VERSION_IN_RANGE(4,4,200,4,5,0) || \
-+	(UTS_UBUNTU_RELEASE_ABI && \
-+		(((LINUX_VERSION_CODE == KERNEL_VERSION(5,0,21)) && \
-+		  (((UTS_UBUNTU_RELEASE_ABI >= 38) && (UTS_UBUNTU_RELEASE_ABI < 1000)) || \
-+		   (UTS_UBUNTU_RELEASE_ABI >= 1032))) || \
-+		 ((LINUX_VERSION_CODE == KERNEL_VERSION(4,15,18)) && \
-+		  (((UTS_UBUNTU_RELEASE_ABI >= 73) && (UTS_UBUNTU_RELEASE_ABI < 1000)) || \
-+		   (UTS_UBUNTU_RELEASE_ABI >= 1066)))))
-+	siphash_key_t perturbation;
-+#else
+@@ -73,7 +73,14 @@ struct fq {
+     LINUX_VERSION_IN_RANGE(4,19,83, 4,20,0) || \
+     LINUX_VERSION_IN_RANGE(4,14,153, 4,15,0) || \
+     LINUX_VERSION_IN_RANGE(4,9,200, 4,10,0) || \
+-    LINUX_VERSION_IN_RANGE(4,4,200, 4,5,0)
++    LINUX_VERSION_IN_RANGE(4,4,200, 4,5,0) || \
++    (UTS_UBUNTU_RELEASE_ABI && \
++     (((LINUX_VERSION_CODE == KERNEL_VERSION(5,0,21)) && \
++       (((UTS_UBUNTU_RELEASE_ABI >= 38) && (UTS_UBUNTU_RELEASE_ABI < 1000)) || \
++        (UTS_UBUNTU_RELEASE_ABI >= 1032))) || \
++      ((LINUX_VERSION_CODE == KERNEL_VERSION(4,15,18)) && \
++       (((UTS_UBUNTU_RELEASE_ABI >= 73) && (UTS_UBUNTU_RELEASE_ABI < 1000)) || \
++        (UTS_UBUNTU_RELEASE_ABI >= 1066)))))
+ 	siphash_key_t   perturbation;
+ #else
  	u32 perturbation;
-+#endif
- 	u32 limit;
- 	u32 memory_limit;
- 	u32 memory_usage;
 diff --git a/include/net/fq_impl.h b/include/net/fq_impl.h
-index be40a4b32..57effd687 100644
+index 86d5c56b2..20a1d271b 100644
 --- a/include/net/fq_impl.h
 +++ b/include/net/fq_impl.h
-@@ -108,7 +108,22 @@ begin:
- 
- static u32 fq_flow_idx(struct fq *fq, struct sk_buff *skb)
- {
-+#if LINUX_VERSION_IS_GEQ(5,3,10) || \
-+	LINUX_VERSION_IN_RANGE(4,19,83,5,0,0) || \
-+	LINUX_VERSION_IN_RANGE(4,14,153,4,15,0) || \
-+	LINUX_VERSION_IN_RANGE(4,9,200,4,10,0) || \
-+	LINUX_VERSION_IN_RANGE(4,4,200,4,5,0) || \
-+	(UTS_UBUNTU_RELEASE_ABI && \
-+		(((LINUX_VERSION_CODE == KERNEL_VERSION(5,0,21)) && \
-+		  (((UTS_UBUNTU_RELEASE_ABI >= 38) && (UTS_UBUNTU_RELEASE_ABI < 1000)) || \
-+		   (UTS_UBUNTU_RELEASE_ABI >= 1032))) || \
-+		 ((LINUX_VERSION_CODE == KERNEL_VERSION(4,15,18)) && \
-+		  (((UTS_UBUNTU_RELEASE_ABI >= 73) && (UTS_UBUNTU_RELEASE_ABI < 1000)) || \
-+		   (UTS_UBUNTU_RELEASE_ABI >= 1066)))))
-+	u32 hash = skb_get_hash_perturb(skb, &fq->perturbation);
-+#else
+@@ -112,7 +112,14 @@ static u32 fq_flow_idx(struct fq *fq, struct sk_buff *skb)
+     LINUX_VERSION_IN_RANGE(4,19,83, 4,20,0) || \
+     LINUX_VERSION_IN_RANGE(4,14,153, 4,15,0) || \
+     LINUX_VERSION_IN_RANGE(4,9,200, 4,10,0) || \
+-    LINUX_VERSION_IN_RANGE(4,4,200, 4,5,0)
++    LINUX_VERSION_IN_RANGE(4,4,200, 4,5,0) || \
++    (UTS_UBUNTU_RELEASE_ABI && \
++     (((LINUX_VERSION_CODE == KERNEL_VERSION(5,0,21)) && \
++       (((UTS_UBUNTU_RELEASE_ABI >= 38) && (UTS_UBUNTU_RELEASE_ABI < 1000)) || \
++        (UTS_UBUNTU_RELEASE_ABI >= 1032))) || \
++      ((LINUX_VERSION_CODE == KERNEL_VERSION(4,15,18)) && \
++       (((UTS_UBUNTU_RELEASE_ABI >= 73) && (UTS_UBUNTU_RELEASE_ABI < 1000)) || \
++        (UTS_UBUNTU_RELEASE_ABI >= 1066)))))
+ 	u32 hash = skb_get_hash_perturb(skb, &fq->perturbation);
+ #else
  	u32 hash = skb_get_hash_perturb(skb, fq->perturbation);
-+#endif
- 
- 	return reciprocal_scale(hash, fq->flows_cnt);
- }
-@@ -308,7 +323,22 @@ static int fq_init(struct fq *fq, int flows_cnt)
- 	INIT_LIST_HEAD(&fq->backlogs);
- 	spin_lock_init(&fq->lock);
- 	fq->flows_cnt = max_t(u32, flows_cnt, 1);
-+#if LINUX_VERSION_IS_GEQ(5,3,10) || \
-+	LINUX_VERSION_IN_RANGE(4,19,83,5,0,0) || \
-+	LINUX_VERSION_IN_RANGE(4,14,153,4,15,0) || \
-+	LINUX_VERSION_IN_RANGE(4,9,200,4,10,0) || \
-+	LINUX_VERSION_IN_RANGE(4,4,200,4,5,0) || \
-+	(UTS_UBUNTU_RELEASE_ABI && \
-+		(((LINUX_VERSION_CODE == KERNEL_VERSION(5,0,21)) && \
-+		  (((UTS_UBUNTU_RELEASE_ABI >= 38) && (UTS_UBUNTU_RELEASE_ABI < 1000)) || \
-+		   (UTS_UBUNTU_RELEASE_ABI >= 1032))) || \
-+		 ((LINUX_VERSION_CODE == KERNEL_VERSION(4,15,18)) && \
-+		  (((UTS_UBUNTU_RELEASE_ABI >= 73) && (UTS_UBUNTU_RELEASE_ABI < 1000)) || \
-+		   (UTS_UBUNTU_RELEASE_ABI >= 1066)))))
-+	get_random_bytes(&fq->perturbation, sizeof(fq->perturbation));
-+#else
- 	fq->perturbation = prandom_u32();
-+#endif
- 	fq->quantum = 300;
- 	fq->limit = 8192;
- 	fq->memory_limit = 16 << 20; /* 16 MBytes */
 -- 
 2.24.0
 

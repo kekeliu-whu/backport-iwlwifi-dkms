@@ -1,3 +1,2 @@
 0001-keep-zconf-in-make-clean.patch
 0006-backport-address-interface-change-in-linux-skbuff.h-.patch
-0007-backport-don-t-include-linux-pci-aspm.h-on-kernel-v5..patch
