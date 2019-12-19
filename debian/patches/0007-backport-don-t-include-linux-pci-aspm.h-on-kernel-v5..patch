@@ -1,0 +1,32 @@
+From 7295f5fb6cc8394104a8ec39de1217048ed7a6e6 Mon Sep 17 00:00:00 2001
+From: You-Sheng Yang <vicamo.yang@canonical.com>
+Date: Fri, 13 Dec 2019 08:54:42 +0000
+Subject: [PATCH] backport: don't include linux/pci-aspm.h on kernel >= v5.4-rc1
+
+linux/pci-aspm.h has been merged into linux/pci.h in commit 7ce2e76a0420
+("PCI: Move ASPM declarations to linux/pci.h"), and mainline iwlwifi
+removed such inclusion in commit 2b2654b8922a ("iwlwifi: Remove
+unnecessary include of <linux/pci-aspm.h>").
+
+Signed-off-by: You-Sheng Yang <vicamo.yang@canonical.com>
+---
+ drivers/net/wireless/intel/iwlwifi/pcie/trans.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/net/wireless/intel/iwlwifi/pcie/trans.c b/drivers/net/wireless/intel/iwlwifi/pcie/trans.c
+index 495ff9418..0fa34a93a 100644
+--- a/drivers/net/wireless/intel/iwlwifi/pcie/trans.c
++++ b/drivers/net/wireless/intel/iwlwifi/pcie/trans.c
+@@ -62,7 +62,9 @@
+  *
+  *****************************************************************************/
+ #include <linux/pci.h>
++#if LINUX_VERSION_IS_LESS(5,4,0)
+ #include <linux/pci-aspm.h>
++#endif
+ #include <linux/interrupt.h>
+ #include <linux/debugfs.h>
+ #include <linux/sched.h>
+-- 
+2.24.0
+
