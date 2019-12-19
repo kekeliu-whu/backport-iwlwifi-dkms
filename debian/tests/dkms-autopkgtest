@@ -10,11 +10,11 @@ run_pkg() {
     echo "I: Installing binary package $pkg"
     export DEBIAN_FRONTEND=noninteractive
     RC=0
-    apt-get install -yq $pkg </dev/null || RC=$?
+    (set +e; apt-get install -yq $pkg </dev/null) || RC=$?
 
     # collect build logs as artifacts
     if [ -d /var/lib/dkms ]; then
-        (cd /var/lib/dkms; find -name "make.log" -print0 | xargs -0 tar c) > "$ADT_ARTIFACTS/$pkg-make-logs.tar"
+        (cd /var/lib/dkms; find -name "make.log" -print0 | xargs -0 tar c) > "$AUTOPKGTEST_ARTIFACTS/$pkg-make-logs.tar"
     fi
 
     if [ "$RC" -ne 0 ]; then
@@ -29,6 +29,7 @@ run_pkg() {
         return
     fi
     dkms_pkg=$(bash -c ". $dkms_conf; echo \$PACKAGE_NAME" 2>/dev/null)
+    dkms_version=$(bash -c ". $dkms_conf; echo \$PACKAGE_VERSION" 2>/dev/null)
 
     echo "I: Testing if $dkms_pkg modules are correctly installed"
     dkmsstatus="$(dkms status $dkms_pkg)"
@@ -41,6 +42,32 @@ run_pkg() {
     if ! echo "$dkmsstatus" | grep -q "installed$"; then
         echo "E: not installed" >&2
         exit 1
+    fi
+
+    modaliases=$(dpkg-query --show -f '${Modaliases}' $pkg)
+    if test -n "$modaliases"; then
+        expected=$(mktemp --tmpdir=$AUTOPKGTEST_TMP --suffix=.expected)
+        built=$(mktemp --tmpdir=$AUTOPKGTEST_TMP --suffix=.generated)
+
+        echo "$modaliases" | \
+            sed -e 's/\([^(]\+\)(\([^)]\+\))\(, \)\?/\1 \2\n/g' | \
+            sed -e '/,/bx' -e 's/\([^ ]\+\) \([^ ]\+\)/alias \2 \1/' \
+                -e 'bend' -e ':x' -e 's/\([^ ]\+\) \([^ ]\+\), \(.*\)/alias \2 \1\n\1 \3/' -e 'P;D' -e ':end' | \
+            grep -v '^$' | \
+            sort > "$expected"
+
+        for build in $(find /var/lib/dkms/$dkms_pkg/$dkms_version -mindepth 3 -maxdepth 3 -type d -name module); do
+            echo "I:   Checking modaliases for $build ..."
+
+            for module in $(find $build -type f -name \*.ko | sort); do
+                /sbin/modinfo ${module} | perl -nae "print \"alias \$1 $(basename --suffix=.ko ${module})\\n\" if /^alias:\\s+(.*)\$/";
+            done | sort > $built;
+            diff -Nu "$expected" "$built";
+        done
+
+        rm -f "$expected" "$built"
+    else
+        echo "I: Package $pkg has no modaliases, skipping"
     fi
 
     # skip modprobing for now; this fails too often (needs particular
@@ -56,9 +83,6 @@ run_pkg() {
     # done
 }
 
-# Try and remove dkms to spot packages which miss a dkms dependency
-dpkg --remove dkms || true
-
 for pkg in $(awk '/^Package:/ { print $2 }' debian/control); do
     # package might be arch: restriction or udeb etc.
     if ! apt-cache show $pkg >/dev/null 2>&1; then
@@ -67,3 +91,6 @@ for pkg in $(awk '/^Package:/ { print $2 }' debian/control); do
     fi
     run_pkg $pkg
 done
+
+# Try and remove dkms to spot packages which miss a dkms dependency
+dpkg --remove dkms || true
