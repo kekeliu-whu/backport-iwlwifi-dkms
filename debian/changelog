@@ -5,6 +5,7 @@ backport-iwlwifi-dkms (8286-0ubuntu1) focal; urgency=low
 
   * debian/patches:
     - Update 0006-backport-address-interface-change-in-linux-skbuff.h-.patch
+    - Drop 0003-backport-apply-__copy-to-init_module-cleanup_module.patch
     - Drop 0007-backport-don-t-include-linux-pci-aspm.h-on-kernel-v5..patch
   * Update debian/backport-iwlwifi-dkms.modaliases
 
