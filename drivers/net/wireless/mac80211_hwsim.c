@@ -308,6 +308,13 @@ static struct net_device *hwsim_mon; /* global monitor netdev */
 	.max_power = 20, \
 }
 
+#define CHAN6G(_chan) { \
+	.band = NL80211_BAND_6GHZ, \
+	.center_freq = 5940 + 5 * (_chan), \
+	.hw_value = 5940 + 5 * (_chan), \
+	.max_power = 20, \
+}
+
 static const struct ieee80211_channel hwsim_channels_2ghz[] = {
 	CHAN2G(2412), /* Channel 1 */
 	CHAN2G(2417), /* Channel 2 */
@@ -354,6 +361,68 @@ static const struct ieee80211_channel hwsim_channels_5ghz[] = {
 	CHAN5G(5805), /* Channel 161 */
 	CHAN5G(5825), /* Channel 165 */
 	CHAN5G(5845), /* Channel 169 */
+};
+
+static const struct ieee80211_channel hwsim_channels_6ghz[] = {
+	CHAN6G(1),
+	CHAN6G(5),
+	CHAN6G(9),
+	CHAN6G(13),
+	CHAN6G(17),
+	CHAN6G(21),
+	CHAN6G(25),
+	CHAN6G(29),
+	CHAN6G(33),
+	CHAN6G(37),
+	CHAN6G(41),
+	CHAN6G(45),
+	CHAN6G(49),
+	CHAN6G(53),
+	CHAN6G(57),
+	CHAN6G(61),
+	CHAN6G(65),
+	CHAN6G(69),
+	CHAN6G(73),
+	CHAN6G(77),
+	CHAN6G(81),
+	CHAN6G(85),
+	CHAN6G(89),
+	CHAN6G(93),
+	CHAN6G(97),
+	CHAN6G(101),
+	CHAN6G(105),
+	CHAN6G(109),
+	CHAN6G(113),
+	CHAN6G(117),
+	CHAN6G(121),
+	CHAN6G(125),
+	CHAN6G(129),
+	CHAN6G(133),
+	CHAN6G(137),
+	CHAN6G(141),
+	CHAN6G(145),
+	CHAN6G(149),
+	CHAN6G(153),
+	CHAN6G(157),
+	CHAN6G(161),
+	CHAN6G(165),
+	CHAN6G(169),
+	CHAN6G(173),
+	CHAN6G(177),
+	CHAN6G(181),
+	CHAN6G(185),
+	CHAN6G(189),
+	CHAN6G(193),
+	CHAN6G(197),
+	CHAN6G(201),
+	CHAN6G(205),
+	CHAN6G(209),
+	CHAN6G(213),
+	CHAN6G(217),
+	CHAN6G(221),
+	CHAN6G(225),
+	CHAN6G(229),
+	CHAN6G(233),
 };
 
 static const struct ieee80211_rate hwsim_rates[] = {
@@ -456,6 +525,8 @@ static struct wiphy_vendor_command mac80211_hwsim_vendor_commands[] = {
 			  .subcmd = QCA_NL80211_SUBCMD_TEST },
 		.flags = WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mac80211_hwsim_vendor_cmd_test,
+		.policy = hwsim_vendor_test_policy,
+		.maxattr = QCA_WLAN_VENDOR_ATTR_MAX,
 	}
 };
 
@@ -484,6 +555,7 @@ struct mac80211_hwsim_data {
 	struct ieee80211_supported_band bands[NUM_NL80211_BANDS];
 	struct ieee80211_channel channels_2ghz[ARRAY_SIZE(hwsim_channels_2ghz)];
 	struct ieee80211_channel channels_5ghz[ARRAY_SIZE(hwsim_channels_5ghz)];
+	struct ieee80211_channel channels_6ghz[ARRAY_SIZE(hwsim_channels_6ghz)];
 	struct ieee80211_rate rates[ARRAY_SIZE(hwsim_rates)];
 	struct ieee80211_iface_combination if_combination;
 	struct ieee80211_iface_limit if_limits[3];
@@ -513,7 +585,8 @@ struct mac80211_hwsim_data {
 		struct ieee80211_channel *channel;
 		unsigned long next_start, start, end;
 	} survey_data[ARRAY_SIZE(hwsim_channels_2ghz) +
-		      ARRAY_SIZE(hwsim_channels_5ghz)];
+		      ARRAY_SIZE(hwsim_channels_5ghz) +
+		      ARRAY_SIZE(hwsim_channels_6ghz)];
 
 	struct ieee80211_channel *channel;
 	u64 beacon_int	/* beacon interval in us */;
@@ -1287,8 +1360,8 @@ static bool mac80211_hwsim_tx_frame_no_nl(struct ieee80211_hw *hw,
 	skb_orphan(skb);
 	skb_dst_drop(skb);
 	skb->mark = 0;
-	secpath_reset(skb);
-	nf_reset(skb);
+	skb_ext_reset(skb);
+	nf_reset_ct(skb);
 
 	/*
 	 * Get absolute mactime here so all HWs RX at the "same time", and
@@ -2005,8 +2078,7 @@ static int mac80211_hwsim_ampdu_action(struct ieee80211_hw *hw,
 
 	switch (action) {
 	case IEEE80211_AMPDU_TX_START:
-		ieee80211_start_tx_ba_cb_irqsafe(vif, sta->addr, tid);
-		break;
+		return IEEE80211_AMPDU_TX_START_IMMEDIATE;
 	case IEEE80211_AMPDU_TX_STOP_CONT:
 	case IEEE80211_AMPDU_TX_STOP_FLUSH:
 	case IEEE80211_AMPDU_TX_STOP_FLUSH_CONT:
@@ -2619,18 +2691,27 @@ static const struct ieee80211_sband_iftype_data he_capa_5ghz = {
 			.tx_mcs_80p80 = cpu_to_le16(0xfffa),
 		},
 	},
+	/* ignored on 5 GHz, so add it here for 6 GHz */
+	.he_6ghz_capa =
+		cpu_to_le16((IEEE80211_HT_MPDU_DENSITY_NONE << 0) |
+			    (IEEE80211_VHT_MAX_AMPDU_1024K << 3) |
+			    (IEEE80211_VHT_CAP_MAX_MPDU_LENGTH_11454 << 6) |
+			    (WLAN_HT_CAP_SM_PS_DISABLED << 8)),
 };
 
 static void mac80211_hswim_he_capab(struct ieee80211_supported_band *sband)
 {
-	if (sband->band == NL80211_BAND_2GHZ)
-		sband->iftype_data =
-			(struct ieee80211_sband_iftype_data *)&he_capa_2ghz;
-	else if (sband->band == NL80211_BAND_5GHZ)
-		sband->iftype_data =
-			(struct ieee80211_sband_iftype_data *)&he_capa_5ghz;
-	else
+	switch (sband->band) {
+	case NL80211_BAND_2GHZ:
+		sband->iftype_data = &he_capa_2ghz;
+		break;
+	case NL80211_BAND_5GHZ:
+	case NL80211_BAND_6GHZ:
+		sband->iftype_data = &he_capa_5ghz;
+		break;
+	default:
 		return;
+	}
 
 	sband->n_iftype_data = 1;
 }
@@ -2870,6 +2951,8 @@ static int mac80211_hwsim_new_radio(struct genl_info *info,
 		sizeof(hwsim_channels_2ghz));
 	memcpy(data->channels_5ghz, hwsim_channels_5ghz,
 		sizeof(hwsim_channels_5ghz));
+	memcpy(data->channels_6ghz, hwsim_channels_6ghz,
+	       sizeof(hwsim_channels_6ghz));
 	memcpy(data->rates, hwsim_rates, sizeof(hwsim_rates));
 
 	for (band = NL80211_BAND_2GHZ; band < NUM_NL80211_BANDS; band++) {
@@ -2912,23 +2995,37 @@ static int mac80211_hwsim_new_radio(struct genl_info *info,
 			sband->vht_cap.vht_mcs.tx_mcs_map =
 				sband->vht_cap.vht_mcs.rx_mcs_map;
 			break;
+		case NL80211_BAND_6GHZ:
+			sband->channels = data->channels_6ghz;
+			sband->n_channels = ARRAY_SIZE(hwsim_channels_6ghz);
+			sband->bitrates = data->rates + 4;
+			sband->n_bitrates = ARRAY_SIZE(hwsim_rates) - 4;
+			break;
 		default:
 			continue;
 		}
 
-		sband->ht_cap.ht_supported = true;
-		sband->ht_cap.cap = IEEE80211_HT_CAP_SUP_WIDTH_20_40 |
-				    IEEE80211_HT_CAP_GRN_FLD |
-				    IEEE80211_HT_CAP_SGI_20 |
-				    IEEE80211_HT_CAP_SGI_40 |
-				    IEEE80211_HT_CAP_DSSSCCK40;
-		sband->ht_cap.ampdu_factor = 0x3;
-		sband->ht_cap.ampdu_density = 0x6;
-		memset(&sband->ht_cap.mcs, 0,
-		       sizeof(sband->ht_cap.mcs));
-		sband->ht_cap.mcs.rx_mask[0] = 0xff;
-		sband->ht_cap.mcs.rx_mask[1] = 0xff;
-		sband->ht_cap.mcs.tx_params = IEEE80211_HT_MCS_TX_DEFINED;
+		switch (band) {
+		case NL80211_BAND_2GHZ:
+		case NL80211_BAND_5GHZ:
+			sband->ht_cap.ht_supported = true;
+			sband->ht_cap.cap = IEEE80211_HT_CAP_SUP_WIDTH_20_40 |
+					    IEEE80211_HT_CAP_GRN_FLD |
+					    IEEE80211_HT_CAP_SGI_20 |
+					    IEEE80211_HT_CAP_SGI_40 |
+					    IEEE80211_HT_CAP_DSSSCCK40;
+			sband->ht_cap.ampdu_factor = 0x3;
+			sband->ht_cap.ampdu_density = 0x6;
+			memset(&sband->ht_cap.mcs, 0,
+			       sizeof(sband->ht_cap.mcs));
+			sband->ht_cap.mcs.rx_mask[0] = 0xff;
+			sband->ht_cap.mcs.rx_mask[1] = 0xff;
+			sband->ht_cap.mcs.tx_params =
+				IEEE80211_HT_MCS_TX_DEFINED;
+			break;
+		default:
+			break;
+		}
 
 		mac80211_hswim_he_capab(sband);
 
