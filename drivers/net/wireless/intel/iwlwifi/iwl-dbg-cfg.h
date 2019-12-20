@@ -89,6 +89,7 @@ struct iwl_dbg_cfg {
 #define IWL_MOD_PARAM(type, name)	/* do nothing */
 #define IWL_MVM_MOD_PARAM(type, name)	type mvm_##name; \
 					bool __mvm_mod_param_##name;
+#define IWL_DBG_CFG_FN(name, fn)	/* nothing */
 
 #endif /* DBG_CFG_REINCLUDE */
 #if IS_ENABLED(CPTCFG_IWLXVT)
@@ -97,6 +98,7 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG(u32, XVT_DEFAULT_DBGM_PRPH_MASK)
 	IWL_MOD_PARAM(bool, xvt_default_mode)
 #endif
+	IWL_DBG_CFG_NODEF(bool, disable_wrt_dump)
 	IWL_DBG_CFG_NODEF(bool, disable_52GHz)
 	IWL_DBG_CFG_NODEF(bool, disable_24GHz)
 #if IS_ENABLED(CPTCFG_IWLMVM) || IS_ENABLED(CPTCFG_IWLFMAC)
@@ -204,6 +206,12 @@ struct iwl_dbg_cfg {
 	IWL_MVM_MOD_PARAM(int, power_scheme)
 	IWL_MVM_MOD_PARAM(bool, init_dbg)
 	IWL_MVM_MOD_PARAM(bool, tfd_q_hang_detect)
+	IWL_DBG_CFG(bool, MVM_FTM_INITIATOR_ENABLE_SMOOTH)
+	IWL_DBG_CFG_RANGE(u8, MVM_FTM_INITIATOR_SMOOTH_ALPHA, 0, 100)
+	/* 667200 is 200m RTT */
+	IWL_DBG_CFG_RANGE(u32, MVM_FTM_INITIATOR_SMOOTH_UNDERSHOOT, 0, 667200)
+	IWL_DBG_CFG_RANGE(u32, MVM_FTM_INITIATOR_SMOOTH_OVERSHOOT, 0, 667200)
+	IWL_DBG_CFG(u32, MVM_FTM_INITIATOR_SMOOTH_AGE_SEC)
 #endif /* CPTCFG_IWLMVM */
 #ifdef CPTCFG_IWLWIFI_DEVICE_TESTMODE
 	IWL_DBG_CFG_NODEF(u32, dnt_out_mode)
@@ -282,13 +290,15 @@ struct iwl_dbg_cfg {
 	IWL_MOD_PARAM(int, amsdu_size)
 	IWL_MOD_PARAM(int, swcrypto)
 	IWL_MOD_PARAM(uint, disable_11n)
+	IWL_MOD_PARAM(bool, enable_ini)
 	IWL_DBG_CFG_BIN(he_ppe_thres)
 	IWL_DBG_CFG_NODEF(u8, he_chan_width_dis)
 	IWL_DBG_CFG_NODEF(u32, vht_cap_flip)
 	IWL_DBG_CFG_NODEF(u32, mu_edca)
 	IWL_DBG_CFG_BIN(he_mac_cap)
 	IWL_DBG_CFG_BIN(he_phy_cap)
-	IWL_DBG_CFG(u32, FW_DBG_DOMAIN)
+	IWL_DBG_CFG_NODEF(u32, FW_DBG_DOMAIN)
+	IWL_DBG_CFG_FN(FW_DBG_PRESET, iwl_dbg_cfg_parse_fw_dbg_preset)
 #ifdef CPTCFG_IWLWIFI_DEBUG
 	IWL_MOD_PARAM(u32, debug_level)
 #endif /* CPTCFG_IWLWIFI_DEBUG */
@@ -303,6 +313,7 @@ struct iwl_dbg_cfg {
 #undef IWL_DBG_CFG_RANGE
 #undef IWL_MOD_PARAM
 #undef IWL_MVM_MOD_PARAM
+#undef IWL_DBG_CFG_FN
 #ifndef DBG_CFG_REINCLUDE
 };
 
