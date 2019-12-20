@@ -1,3 +1,16 @@
+backport-iwlwifi-dkms (8286-0ubuntu1) focal; urgency=low
+
+  * New release
+    - upstream version 8286 commit 26271a73a63d24.
+
+  * debian/patches:
+    - Update 0006-backport-address-interface-change-in-linux-skbuff.h-.patch
+    - Drop 0003-backport-apply-__copy-to-init_module-cleanup_module.patch
+    - Drop 0007-backport-don-t-include-linux-pci-aspm.h-on-kernel-v5..patch
+  * Update debian/backport-iwlwifi-dkms.modaliases
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Wed, 18 Dec 2019 19:43:25 +0800
+
 backport-iwlwifi-dkms (8042-0ubuntu1) focal; urgency=low
 
   * Sync with upstream HEAD commit 590e94cdd00782.

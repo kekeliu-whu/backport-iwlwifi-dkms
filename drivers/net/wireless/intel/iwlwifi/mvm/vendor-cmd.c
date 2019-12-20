@@ -62,8 +62,8 @@
  *
  *****************************************************************************/
 #include <linux/etherdevice.h>
-#include <net/mac80211.h>
 #include <net/netlink.h>
+#include <net/mac80211.h>
 #include "mvm.h"
 #include "iwl-vendor-cmd.h"
 
@@ -841,14 +841,14 @@ static int iwl_mvm_vendor_set_dynamic_txp_profile(struct wiphy *wiphy,
 	chain_a = nla_get_u8(tb[IWL_MVM_VENDOR_ATTR_SAR_CHAIN_A_PROFILE]);
 	chain_b = nla_get_u8(tb[IWL_MVM_VENDOR_ATTR_SAR_CHAIN_B_PROFILE]);
 
-	if (mvm->sar_chain_a_profile == chain_a &&
-	    mvm->sar_chain_b_profile == chain_b) {
+	if (mvm->fwrt.sar_chain_a_profile == chain_a &&
+	    mvm->fwrt.sar_chain_b_profile == chain_b) {
 		err = 0;
 		goto free;
 	}
 
-	mvm->sar_chain_a_profile = chain_a;
-	mvm->sar_chain_b_profile = chain_b;
+	mvm->fwrt.sar_chain_a_profile = chain_a;
+	mvm->fwrt.sar_chain_b_profile = chain_b;
 
 	mutex_lock(&mvm->mutex);
 	err = iwl_mvm_sar_select_profile(mvm, chain_a, chain_b);
@@ -870,7 +870,7 @@ static int iwl_mvm_vendor_get_sar_profile_info(struct wiphy *wiphy,
 	u32 n_profiles = 0;
 
 	for (i = 0; i < ACPI_SAR_PROFILE_NUM; i++) {
-		if (mvm->sar_profiles[i].enabled)
+		if (mvm->fwrt.sar_profiles[i].enabled)
 			n_profiles++;
 	}
 
@@ -880,9 +880,9 @@ static int iwl_mvm_vendor_get_sar_profile_info(struct wiphy *wiphy,
 	if (nla_put_u8(skb, IWL_MVM_VENDOR_ATTR_SAR_ENABLED_PROFILE_NUM,
 		       n_profiles) ||
 	    nla_put_u8(skb, IWL_MVM_VENDOR_ATTR_SAR_CHAIN_A_PROFILE,
-		       mvm->sar_chain_a_profile) ||
+		       mvm->fwrt.sar_chain_a_profile) ||
 	    nla_put_u8(skb, IWL_MVM_VENDOR_ATTR_SAR_CHAIN_B_PROFILE,
-		       mvm->sar_chain_b_profile)) {
+		       mvm->fwrt.sar_chain_b_profile)) {
 		kfree_skb(skb);
 		return -ENOBUFS;
 	}
@@ -929,7 +929,7 @@ static int iwl_mvm_vendor_get_geo_profile_info(struct wiphy *wiphy,
 			return -ENOBUFS;
 		}
 
-		value =  &mvm->geo_profiles[tbl_idx - 1].values[idx];
+		value =  &mvm->fwrt.geo_profiles[tbl_idx - 1].values[idx];
 
 		nla_put_u8(skb, IWL_VENDOR_SAR_GEO_MAX_TXP, value[0]);
 		nla_put_u8(skb, IWL_VENDOR_SAR_GEO_CHAIN_A_OFFSET, value[1]);
@@ -941,7 +941,6 @@ out:
 
 	return cfg80211_vendor_cmd_reply(skb);
 }
-#endif
 
 static const struct nla_policy
 iwl_mvm_vendor_fips_hw_policy[NUM_IWL_VENDOR_FIPS_TEST_VECTOR_HW] = {
@@ -1175,6 +1174,7 @@ free:
 	kfree(tb);
 	return ret;
 }
+#endif
 
 static int iwl_mvm_vendor_csi_register(struct wiphy *wiphy,
 				       struct wireless_dev *wdev,
@@ -1197,6 +1197,8 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_NETDEV |
 			 WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = iwl_mvm_set_low_latency,
+		.policy = iwl_mvm_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
 	{
 		.info = {
@@ -1206,6 +1208,8 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_NETDEV |
 			 WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = iwl_mvm_get_low_latency,
+		.policy = iwl_mvm_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
 	{
 		.info = {
@@ -1215,6 +1219,8 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_NETDEV |
 			 WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = iwl_mvm_set_country,
+		.policy = iwl_mvm_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
 	{
 		.info = {
@@ -1224,6 +1230,8 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_NETDEV |
 			 WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = iwl_vendor_frame_filter_cmd,
+		.policy = iwl_mvm_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
 #ifdef CPTCFG_IWLMVM_TDLS_PEER_CACHE
 	{
@@ -1234,6 +1242,8 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_NETDEV |
 			 WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = iwl_vendor_tdls_peer_cache_add,
+		.policy = iwl_mvm_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
 	{
 		.info = {
@@ -1243,6 +1253,8 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_NETDEV |
 			 WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = iwl_vendor_tdls_peer_cache_del,
+		.policy = iwl_mvm_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
 	{
 		.info = {
@@ -1252,6 +1264,8 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_NETDEV |
 			 WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = iwl_vendor_tdls_peer_cache_query,
+		.policy = iwl_mvm_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
 #endif /* CPTCFG_IWLMVM_TDLS_PEER_CACHE */
 	{
@@ -1262,6 +1276,8 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 			 WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = iwl_vendor_set_nic_txpower_limit,
+		.policy = iwl_mvm_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
 #ifdef CPTCFG_IWLMVM_P2P_OPPPS_TEST_WA
 	{
@@ -1272,6 +1288,8 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_NETDEV |
 			 WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = iwl_mvm_oppps_wa,
+		.policy = iwl_mvm_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
 #endif
 	{
@@ -1282,6 +1300,8 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_NETDEV |
 			 WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = iwl_mvm_vendor_rxfilter,
+		.policy = iwl_mvm_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
 	{
 		.info = {
@@ -1291,6 +1311,8 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 			 WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = iwl_mvm_vendor_dbg_collect,
+		.policy = iwl_mvm_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
 	{
 		.info = {
@@ -1301,6 +1323,8 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 			 WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = iwl_mvm_vendor_nan_faw_conf,
+		.policy = iwl_mvm_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
 #ifdef CONFIG_ACPI
 	{
@@ -1310,6 +1334,8 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 		},
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV,
 		.doit = iwl_mvm_vendor_set_dynamic_txp_profile,
+		.policy = iwl_mvm_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
 	{
 		.info = {
@@ -1318,6 +1344,8 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 		},
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV,
 		.doit = iwl_mvm_vendor_get_sar_profile_info,
+		.policy = iwl_mvm_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
 	{
 		.info = {
@@ -1327,6 +1355,8 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 			 WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = iwl_mvm_vendor_get_geo_profile_info,
+		.policy = iwl_mvm_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
 	{
 		.info = {
@@ -1336,6 +1366,8 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 			 WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = iwl_mvm_vendor_test_fips,
+		.policy = iwl_mvm_vendor_fips_hw_policy,
+		.maxattr = MAX_IWL_VENDOR_FIPS_TEST_VECTOR_HW,
 	},
 #endif
 	{
@@ -1344,6 +1376,8 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 			.subcmd = IWL_MVM_VENDOR_CMD_CSI_EVENT,
 		},
 		.doit = iwl_mvm_vendor_csi_register,
+		.policy = iwl_mvm_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
 };
 
