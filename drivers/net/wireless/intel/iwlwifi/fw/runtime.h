@@ -65,13 +65,9 @@
 #include "img.h"
 #include "fw/api/debug.h"
 #include "fw/api/paging.h"
+#include "fw/api/power.h"
 #include "iwl-eeprom-parse.h"
-
-#ifndef CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES
-#define IWL_FW_DBG_DOMAIN		IWL_FW_INI_DOMAIN_ALWAYS_ON
-#else
-#define IWL_FW_DBG_DOMAIN		(fwrt->trans->dbg_cfg.FW_DBG_DOMAIN)
-#endif
+#include "fw/acpi.h"
 
 struct iwl_fw_runtime_ops {
 	int (*dump_start)(void *ctx);
@@ -101,8 +97,16 @@ struct iwl_fwrt_shared_mem_cfg {
  * @fw_pkt: packet received from FW
  */
 struct iwl_fwrt_dump_data {
-	struct iwl_fw_ini_trigger_tlv *trig;
-	struct iwl_rx_packet *fw_pkt;
+	union {
+		struct {
+			struct iwl_fw_ini_trigger_tlv *trig;
+			struct iwl_rx_packet *fw_pkt;
+		};
+		struct {
+			const struct iwl_fw_dump_desc *desc;
+			bool monitor_only;
+		};
+	};
 };
 
 /**
@@ -131,14 +135,6 @@ struct iwl_txf_iter_data {
 };
 
 /**
- * enum iwl_fw_runtime_status - fw runtime status flags
- * @STATUS_GEN_ACTIVE_TRIGS: generating active trigger list
- */
-enum iwl_fw_runtime_status {
-	STATUS_GEN_ACTIVE_TRIGS,
-};
-
-/**
  * struct iwl_fw_runtime - runtime data for firmware
  * @fw: firmware image
  * @cfg: NIC configuration
@@ -151,7 +147,6 @@ enum iwl_fw_runtime_status {
  * @smem_cfg: saved firmware SMEM configuration
  * @cur_fw_img: current firmware image, must be maintained by
  *	the driver by calling &iwl_fw_set_current_image()
- * @status: &enum iwl_fw_runtime_status
  * @dump: debug dump data
  */
 struct iwl_fw_runtime {
@@ -172,12 +167,8 @@ struct iwl_fw_runtime {
 	/* memory configuration */
 	struct iwl_fwrt_shared_mem_cfg smem_cfg;
 
-	unsigned long status;
-
 	/* debug */
 	struct {
-		const struct iwl_fw_dump_desc *desc;
-		bool monitor_only;
 		struct iwl_fwrt_wk_data wks[IWL_FW_RUNTIME_DUMP_WK_NUM];
 		unsigned long active_wks;
 
@@ -208,6 +199,14 @@ struct iwl_fw_runtime {
 	} timestamp;
 	bool tpc_enabled;
 #endif /* CPTCFG_IWLWIFI_DEBUGFS */
+#ifdef CONFIG_ACPI
+	struct iwl_sar_profile sar_profiles[ACPI_SAR_PROFILE_NUM];
+	u8 sar_chain_a_profile;
+	u8 sar_chain_b_profile;
+	struct iwl_geo_profile geo_profiles[ACPI_NUM_GEO_PROFILES];
+	u32 geo_rev;
+	struct iwl_ppag_table_cmd ppag_table;
+#endif
 };
 
 void iwl_fw_runtime_init(struct iwl_fw_runtime *fwrt, struct iwl_trans *trans,
