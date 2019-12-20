@@ -1354,8 +1354,8 @@ struct ieee80211_local {
 
 	struct rate_control_ref *rate_ctrl;
 
-	struct crypto_cipher *wep_tx_tfm;
-	struct crypto_cipher *wep_rx_tfm;
+	struct arc4_ctx wep_tx_ctx;
+	struct arc4_ctx wep_rx_ctx;
 	u32 wep_iv;
 
 	/* see iface.c */
@@ -1510,12 +1510,6 @@ struct ieee80211_local {
 	struct sk_buff_head skb_queue_tdls_chsw;
 
 	u64 msrment_cookie_counter;
-
-	struct uapsd_black_list {
-		struct rcu_head rcu_head;
-		unsigned int num_oui;
-		unsigned int oui[];
-	} __rcu *uapsd_black_list;
 };
 
 static inline struct ieee80211_sub_if_data *
@@ -1611,6 +1605,7 @@ struct ieee802_11_elems {
 	const struct ieee80211_bss_max_idle_period_ie *max_idle_period_ie;
 	const struct ieee80211_multiple_bssid_configuration *mbssid_config_ie;
 	const struct ieee80211_bssid_index *bssid_index;
+	const struct ieee80211_he_6ghz_capa *he_6ghz_capa;
 	u8 max_bssid_indicator;
 	u8 dtim_count;
 	u8 dtim_period;
@@ -1829,6 +1824,13 @@ int ieee80211_channel_switch(struct wiphy *wiphy, struct net_device *dev,
 			     struct cfg80211_csa_settings *params);
 
 /* interface handling */
+#define MAC80211_SUPPORTED_FEATURES_TX	(NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM | \
+					 NETIF_F_HW_CSUM | NETIF_F_SG | \
+					 NETIF_F_HIGHDMA | NETIF_F_GSO_SOFTWARE)
+#define MAC80211_SUPPORTED_FEATURES_RX	(NETIF_F_RXCSUM)
+#define MAC80211_SUPPORTED_FEATURES	(MAC80211_SUPPORTED_FEATURES_TX | \
+					 MAC80211_SUPPORTED_FEATURES_RX)
+
 int ieee80211_iface_init(void);
 void ieee80211_iface_exit(void);
 int ieee80211_if_add(struct ieee80211_local *local, const char *name,
@@ -1976,13 +1978,7 @@ void
 ieee80211_he_cap_ie_to_sta_he_cap(struct ieee80211_sub_if_data *sdata,
 				  struct ieee80211_supported_band *sband,
 				  const u8 *he_cap_ie, u8 he_cap_len,
-				  struct sta_info *sta);
-
-/* HE */
-void
-ieee80211_he_cap_ie_to_sta_he_cap(struct ieee80211_sub_if_data *sdata,
-				  struct ieee80211_supported_band *sband,
-				  const u8 *he_cap_ie, u8 he_cap_len,
+				  const struct ieee80211_he_6ghz_capa *he_6ghz_capa,
 				  struct sta_info *sta);
 
 /* Spectrum management */
@@ -2206,7 +2202,8 @@ void ieee80211_send_auth(struct ieee80211_sub_if_data *sdata,
 			 const u8 *da, const u8 *key, u8 key_len, u8 key_idx,
 			 u32 tx_flags);
 void ieee80211_send_deauth_disassoc(struct ieee80211_sub_if_data *sdata,
-				    const u8 *bssid, u16 stype, u16 reason,
+				    const u8 *da, const u8 *bssid,
+				    u16 stype, u16 reason,
 				    bool send_frame, u8 *frame_buf);
 
 enum {

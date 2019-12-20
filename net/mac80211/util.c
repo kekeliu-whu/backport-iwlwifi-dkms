@@ -888,6 +888,50 @@ void ieee80211_queue_delayed_work(struct ieee80211_hw *hw,
 }
 EXPORT_SYMBOL(ieee80211_queue_delayed_work);
 
+static void ieee80211_parse_extension_element(u32 *crc,
+					      const struct element *elem,
+					      struct ieee802_11_elems *elems)
+{
+	const void *data = elem->data + 1;
+	u8 len = elem->datalen - 1;
+
+	switch (elem->data[0]) {
+	case WLAN_EID_EXT_HE_MU_EDCA:
+		if (len == sizeof(*elems->mu_edca_param_set)) {
+			elems->mu_edca_param_set = data;
+			if (crc)
+				*crc = crc32_be(*crc, (void *)elem,
+						elem->datalen + 2);
+		}
+		break;
+	case WLAN_EID_EXT_HE_CAPABILITY:
+		elems->he_cap = data;
+		elems->he_cap_len = len;
+		break;
+	case WLAN_EID_EXT_HE_OPERATION:
+		if (len >= sizeof(*elems->he_operation) &&
+		    len == ieee80211_he_oper_size(data) - 1)
+			elems->he_operation = data;
+		break;
+	case WLAN_EID_EXT_UORA:
+		if (len == 1)
+			elems->uora_element = data;
+		break;
+	case WLAN_EID_EXT_MAX_CHANNEL_SWITCH_TIME:
+		if (len == 3)
+			elems->max_channel_switch_time = data;
+		break;
+	case WLAN_EID_EXT_MULTIPLE_BSSID_CONFIGURATION:
+		if (len == sizeof(*elems->mbssid_config_ie))
+			elems->mbssid_config_ie = data;
+		break;
+	case WLAN_EID_EXT_HE_6GHZ_CAPA:
+		if (len == sizeof(*elems->he_6ghz_capa))
+			elems->he_6ghz_capa = data;
+		break;
+	}
+}
+
 static u32
 _ieee802_11_parse_elems_crc(const u8 *start, size_t len, bool action,
 			    struct ieee802_11_elems *elems,
@@ -1211,29 +1255,9 @@ _ieee802_11_parse_elems_crc(const u8 *start, size_t len, bool action,
 				elems->max_idle_period_ie = (void *)pos;
 			break;
 		case WLAN_EID_EXTENSION:
-			if (pos[0] == WLAN_EID_EXT_HE_MU_EDCA &&
-			    elen >= (sizeof(*elems->mu_edca_param_set) + 1)) {
-				elems->mu_edca_param_set = (void *)&pos[1];
-				if (calc_crc)
-					crc = crc32_be(crc, pos - 2, elen + 2);
-			} else if (pos[0] == WLAN_EID_EXT_HE_CAPABILITY) {
-				elems->he_cap = (void *)&pos[1];
-				elems->he_cap_len = elen - 1;
-			} else if (pos[0] == WLAN_EID_EXT_HE_OPERATION &&
-				   elen >= sizeof(*elems->he_operation) &&
-				   elen >= ieee80211_he_oper_size(&pos[1])) {
-				elems->he_operation = (void *)&pos[1];
-			} else if (pos[0] == WLAN_EID_EXT_UORA && elen >= 1) {
-				elems->uora_element = (void *)&pos[1];
-			} else if (pos[0] ==
-				   WLAN_EID_EXT_MAX_CHANNEL_SWITCH_TIME &&
-				   elen == 4) {
-				elems->max_channel_switch_time = pos + 1;
-			} else if (pos[0] ==
-				   WLAN_EID_EXT_MULTIPLE_BSSID_CONFIGURATION &&
-				   elen == 3) {
-				elems->mbssid_config_ie = (void *)&pos[1];
-			}
+			ieee80211_parse_extension_element(calc_crc ?
+								&crc : NULL,
+							  elem, elems);
 			break;
 		default:
 			break;
@@ -1572,7 +1596,8 @@ void ieee80211_send_auth(struct ieee80211_sub_if_data *sdata,
 }
 
 void ieee80211_send_deauth_disassoc(struct ieee80211_sub_if_data *sdata,
-				    const u8 *bssid, u16 stype, u16 reason,
+				    const u8 *da, const u8 *bssid,
+				    u16 stype, u16 reason,
 				    bool send_frame, u8 *frame_buf)
 {
 	struct ieee80211_local *local = sdata->local;
@@ -1583,7 +1608,7 @@ void ieee80211_send_deauth_disassoc(struct ieee80211_sub_if_data *sdata,
 	mgmt->frame_control = cpu_to_le16(IEEE80211_FTYPE_MGMT | stype);
 	mgmt->duration = 0; /* initialize only */
 	mgmt->seq_ctrl = 0; /* initialize only */
-	memcpy(mgmt->da, bssid, ETH_ALEN);
+	memcpy(mgmt->da, da, ETH_ALEN);
 	memcpy(mgmt->sa, sdata->vif.addr, ETH_ALEN);
 	memcpy(mgmt->bssid, bssid, ETH_ALEN);
 	/* u.deauth.reason_code == u.disassoc.reason_code */
