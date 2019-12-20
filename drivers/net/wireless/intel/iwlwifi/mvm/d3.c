@@ -989,6 +989,8 @@ static int __iwl_mvm_suspend(struct ieee80211_hw *hw,
 
 	mutex_lock(&mvm->mutex);
 
+	set_bit(IWL_MVM_STATUS_IN_D3, &mvm->status);
+
 	vif = iwl_mvm_get_bss_vif(mvm);
 	if (IS_ERR_OR_NULL(vif)) {
 		ret = 1;
@@ -1083,6 +1085,8 @@ static int __iwl_mvm_suspend(struct ieee80211_hw *hw,
 				ieee80211_restart_hw(mvm->hw);
 			}
 		}
+
+		clear_bit(IWL_MVM_STATUS_IN_D3, &mvm->status);
 	}
  out_noreset:
 	mutex_unlock(&mvm->mutex);
@@ -1513,12 +1517,14 @@ out:
 
 struct iwl_wowlan_status *iwl_mvm_send_wowlan_get_status(struct iwl_mvm *mvm)
 {
-	struct iwl_wowlan_status *v7, *status;
+	struct iwl_wowlan_status_v7 *v7;
+	struct iwl_wowlan_status *status;
 	struct iwl_host_cmd cmd = {
 		.id = WOWLAN_GET_STATUSES,
 		.flags = CMD_WANT_SKB,
 	};
-	int ret, len, status_size;
+	int ret, len, status_size, data_size;
+	u8 notif_ver;
 
 	lockdep_assert_held(&mvm->mutex);
 
@@ -1528,13 +1534,12 @@ struct iwl_wowlan_status *iwl_mvm_send_wowlan_get_status(struct iwl_mvm *mvm)
 		return ERR_PTR(ret);
 	}
 
+	len = iwl_rx_packet_payload_len(cmd.resp_pkt);
 	if (!fw_has_api(&mvm->fw->ucode_capa,
 			IWL_UCODE_TLV_API_WOWLAN_KEY_MATERIAL)) {
 		struct iwl_wowlan_status_v6 *v6 = (void *)cmd.resp_pkt->data;
-		int data_size;
 
 		status_size = sizeof(*v6);
-		len = iwl_rx_packet_payload_len(cmd.resp_pkt);
 
 		if (len < status_size) {
 			IWL_ERR(mvm, "Invalid WoWLAN status response!\n");
@@ -1589,23 +1594,33 @@ struct iwl_wowlan_status *iwl_mvm_send_wowlan_get_status(struct iwl_mvm *mvm)
 	}
 
 	v7 = (void *)cmd.resp_pkt->data;
-	status_size = sizeof(*v7);
-	len = iwl_rx_packet_payload_len(cmd.resp_pkt);
+	notif_ver = iwl_fw_lookup_notif_ver(mvm->fw, LEGACY_GROUP,
+					    WOWLAN_GET_STATUSES, 0);
+
+	status_size = sizeof(*status);
+
+	if (notif_ver == IWL_FW_CMD_VER_UNKNOWN || notif_ver < 9)
+		status_size = sizeof(*v7);
 
 	if (len < status_size) {
 		IWL_ERR(mvm, "Invalid WoWLAN status response!\n");
 		status = ERR_PTR(-EIO);
 		goto out_free_resp;
 	}
+	data_size = ALIGN(le32_to_cpu(v7->wake_packet_bufsize), 4);
 
-	if (len != (status_size +
-		    ALIGN(le32_to_cpu(v7->wake_packet_bufsize), 4))) {
+	if (len != (status_size + data_size)) {
 		IWL_ERR(mvm, "Invalid WoWLAN status response!\n");
 		status = ERR_PTR(-EIO);
 		goto out_free_resp;
 	}
 
-	status = kmemdup(v7, len, GFP_KERNEL);
+	status = kzalloc(sizeof(*status) + data_size, GFP_KERNEL);
+	if (!status)
+		goto out_free_resp;
+
+	memcpy(status, v7, status_size);
+	memcpy(status->wake_packet, (u8 *)v7 + status_size, data_size);
 
 out_free_resp:
 	iwl_free_resp(&cmd);
@@ -1705,6 +1720,7 @@ iwl_mvm_netdetect_query_results(struct iwl_mvm *mvm,
 	};
 	int ret, len;
 	size_t query_len, matches_len;
+	int max_profiles = iwl_umac_scan_get_max_profiles(mvm->fw);
 
 	ret = iwl_mvm_send_cmd(mvm, &cmd);
 	if (ret) {
@@ -1716,11 +1732,11 @@ iwl_mvm_netdetect_query_results(struct iwl_mvm *mvm,
 		       IWL_UCODE_TLV_API_SCAN_OFFLOAD_CHANS)) {
 		query_len = sizeof(struct iwl_scan_offload_profiles_query);
 		matches_len = sizeof(struct iwl_scan_offload_profile_match) *
-			IWL_SCAN_MAX_PROFILES;
+			max_profiles;
 	} else {
 		query_len = sizeof(struct iwl_scan_offload_profiles_query_v1);
 		matches_len = sizeof(struct iwl_scan_offload_profile_match_v1) *
-			IWL_SCAN_MAX_PROFILES;
+			max_profiles;
 	}
 
 	len = iwl_rx_packet_payload_len(cmd.resp_pkt);
@@ -1928,6 +1944,8 @@ static int __iwl_mvm_resume(struct iwl_mvm *mvm, bool test)
 				      IWL_UCODE_TLV_CAPA_D0I3_END_FIRST);
 
 	mutex_lock(&mvm->mutex);
+
+	clear_bit(IWL_MVM_STATUS_IN_D3, &mvm->status);
 
 	/* get the BSS vif pointer again */
 	vif = iwl_mvm_get_bss_vif(mvm);
