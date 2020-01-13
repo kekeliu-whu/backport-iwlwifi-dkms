@@ -231,6 +231,9 @@ alias pci:v00008086d00002725sv*sd000000B0bc*sc*i* iwlwifi
 alias pci:v00008086d00002725sv*sd00000310bc*sc*i* iwlwifi
 alias pci:v00008086d00002725sv*sd00000510bc*sc*i* iwlwifi
 alias pci:v00008086d00002725sv*sd00000A10bc*sc*i* iwlwifi
+alias pci:v00008086d00002726sv*sd00000090bc*sc*i* iwlwifi
+alias pci:v00008086d00002726sv*sd000000B0bc*sc*i* iwlwifi
+alias pci:v00008086d00002726sv*sd00000510bc*sc*i* iwlwifi
 alias pci:v00008086d000030DCsv*sd*bc*sc*i* iwlwifi
 alias pci:v00008086d00003165sv*sd00004010bc*sc*i* iwlwifi
 alias pci:v00008086d00003165sv*sd00004012bc*sc*i* iwlwifi
@@ -246,11 +249,14 @@ alias pci:v00008086d000031DCsv*sd*bc*sc*i* iwlwifi
 alias pci:v00008086d000034F0sv*sd*bc*sc*i* iwlwifi
 alias pci:v00008086d00003DF0sv*sd*bc*sc*i* iwlwifi
 alias pci:v00008086d000043F0sv*sd*bc*sc*i* iwlwifi
+alias pci:v00008086d00004DF0sv*sd*bc*sc*i* iwlwifi
 alias pci:v00008086d00007A70sv*sd00000090bc*sc*i* iwlwifi
+alias pci:v00008086d00007A70sv*sd000000B0bc*sc*i* iwlwifi
 alias pci:v00008086d00007A70sv*sd00000310bc*sc*i* iwlwifi
 alias pci:v00008086d00007A70sv*sd00000510bc*sc*i* iwlwifi
 alias pci:v00008086d00007A70sv*sd00000A10bc*sc*i* iwlwifi
 alias pci:v00008086d00007AF0sv*sd00000090bc*sc*i* iwlwifi
+alias pci:v00008086d00007AF0sv*sd000000B0bc*sc*i* iwlwifi
 alias pci:v00008086d00007AF0sv*sd00000310bc*sc*i* iwlwifi
 alias pci:v00008086d00007AF0sv*sd00000510bc*sc*i* iwlwifi
 alias pci:v00008086d00007AF0sv*sd00000A10bc*sc*i* iwlwifi
