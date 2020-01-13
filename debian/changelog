@@ -1,3 +1,10 @@
+backport-iwlwifi-dkms (8292-0ubuntu1) cosmic; urgency=low
+
+  * New release
+    - upstream version 8292 commit cb9dfa2c338816.
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Thu, 09 Jan 2020 03:15:48 +0000
+
 backport-iwlwifi-dkms (8286-0ubuntu1) cosmic; urgency=low
 
   * New release
