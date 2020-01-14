@@ -8,7 +8,7 @@
  * Copyright(c) 2008 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2015 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2018 - 2020 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -31,7 +31,7 @@
  * Copyright(c) 2005 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2015 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2018 - 2020 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -1442,11 +1442,7 @@ static int iwl_dump_ini_rxf_iter(struct iwl_fw_runtime *fwrt,
 		goto out;
 	}
 
-	/*
-	 * region register have absolute value so apply rxf offset after
-	 * reading the registers
-	 */
-	offs += rxf_data.offset;
+	offs = rxf_data.offset;
 
 	/* Lock fence */
 	iwl_write_prph_no_grab(fwrt->trans, RXF_SET_FENCE_MODE + offs, 0x1);
@@ -2333,26 +2329,40 @@ IWL_EXPORT_SYMBOL(iwl_fw_dbg_collect_desc);
 int iwl_fw_dbg_error_collect(struct iwl_fw_runtime *fwrt,
 			     enum iwl_fw_dbg_trigger trig_type)
 {
-	int ret;
-	struct iwl_fw_dump_desc *iwl_dump_error_desc;
-
 	if (!test_bit(STATUS_DEVICE_ENABLED, &fwrt->trans->status))
 		return -EIO;
 
-	iwl_dump_error_desc = kmalloc(sizeof(*iwl_dump_error_desc), GFP_KERNEL);
-	if (!iwl_dump_error_desc)
-		return -ENOMEM;
+	if (iwl_trans_dbg_ini_valid(fwrt->trans)) {
+		if (trig_type != FW_DBG_TRIGGER_ALIVE_TIMEOUT)
+			return -EIO;
 
-	iwl_dump_error_desc->trig_desc.type = cpu_to_le32(trig_type);
-	iwl_dump_error_desc->len = 0;
+		iwl_dbg_tlv_time_point(fwrt,
+				       IWL_FW_INI_TIME_POINT_HOST_ALIVE_TIMEOUT,
+				       NULL);
+	} else {
+		struct iwl_fw_dump_desc *iwl_dump_error_desc;
+		int ret;
 
-	ret = iwl_fw_dbg_collect_desc(fwrt, iwl_dump_error_desc, false, 0);
-	if (ret)
-		kfree(iwl_dump_error_desc);
-	else
-		iwl_trans_sync_nmi(fwrt->trans);
+		iwl_dump_error_desc =
+			kmalloc(sizeof(*iwl_dump_error_desc), GFP_KERNEL);
 
-	return ret;
+		if (!iwl_dump_error_desc)
+			return -ENOMEM;
+
+		iwl_dump_error_desc->trig_desc.type = cpu_to_le32(trig_type);
+		iwl_dump_error_desc->len = 0;
+
+		ret = iwl_fw_dbg_collect_desc(fwrt, iwl_dump_error_desc,
+					      false, 0);
+		if (ret) {
+			kfree(iwl_dump_error_desc);
+			return ret;
+		}
+	}
+
+	iwl_trans_sync_nmi(fwrt->trans);
+
+	return 0;
 }
 IWL_EXPORT_SYMBOL(iwl_fw_dbg_error_collect);
 
