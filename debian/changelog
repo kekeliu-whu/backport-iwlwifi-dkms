@@ -1,3 +1,11 @@
+backport-iwlwifi-dkms (8324-0ubuntu1) disco; urgency=low
+
+  * New release
+    - upstream version 8324 commit 5aa9fb548df6af.
+    - update debian/backport-iwlwifi-dkms.modaliases.
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Mon, 13 Jan 2020 11:28:16 +0800
+
 backport-iwlwifi-dkms (8292-0ubuntu1) disco; urgency=low
 
   * New release
