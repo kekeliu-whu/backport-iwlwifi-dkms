@@ -3,3 +3,4 @@
 0005-Makefile.kernel-pass-fno-stack-clash-protection-and-.patch
 0006-backport-address-interface-change-in-linux-skbuff.h-.patch
 0007-backport-add-genlmsg_parse.patch
+0008-backport-update-include-uapi-linux-pci_regs.h.patch
