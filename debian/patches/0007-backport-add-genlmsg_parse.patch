@@ -1,0 +1,50 @@
+From dab7f14acb372b1a0c5f0c8b0b256bbc09f2f362 Mon Sep 17 00:00:00 2001
+From: Johannes Berg <johannes.berg@intel.com>
+Date: Fri, 28 Feb 2020 09:17:40 +0100
+Subject: [PATCH] backport: add genlmsg_parse()
+
+We just need to provide our own version of this so that
+the types match up correctly.
+
+While at it, fix the version ifdef comment.
+
+type=feature
+ticket=none
+
+Change-Id: Ic7f3b6424b5474b73eb2f9819569118e38e1b479
+Signed-off-by: Johannes Berg <johannes.berg@intel.com>
+Reviewed-on: https://git-amr-3.devtools.intel.com/gerrit/254152
+Tested-by: ec ger unix iil jenkins <EC.GER.UNIX.IIL.JENKINS@INTEL.COM>
+x-iwlwifi-stack-dev: da7591716aa2f04b80e987362033452f0e2419b6
+(cherry picked from commit f207b0f5e770f7f90d8a19fedc9cb72031dd4322)
+Signed-off-by: You-Sheng Yang <vicamo.yang@canonical.com>
+---
+ backport-include/net/genetlink.h | 13 ++++++++++++-
+ 1 file changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/backport-include/net/genetlink.h b/backport-include/net/genetlink.h
+index e6b78e02a..90ec7a789 100644
+--- a/backport-include/net/genetlink.h
++++ b/backport-include/net/genetlink.h
+@@ -250,6 +250,17 @@ static inline struct nlattr **genl_family_attrbuf(struct genl_family *family)
+ 
+ 	return family->attrbuf;
+ }
+-#endif /* LINUX_VERSION_IS_LESS(4,20,0) */
++
++#define genlmsg_parse LINUX_BACKPORT(genlmsg_parse)
++static inline int genlmsg_parse(const struct nlmsghdr *nlh,
++				const struct genl_family *family,
++				struct nlattr *tb[], int maxtype,
++				const struct nla_policy *policy,
++				struct netlink_ext_ack *extack)
++{
++	return __nlmsg_parse(nlh, family->hdrsize + GENL_HDRLEN, tb, maxtype,
++			     policy, NL_VALIDATE_STRICT, extack);
++}
++#endif /* LINUX_VERSION_IS_LESS(5,2) */
+ 
+ #endif /* __BACKPORT_NET_GENETLINK_H */
+-- 
+2.25.1
+
