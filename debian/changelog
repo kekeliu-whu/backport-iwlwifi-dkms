@@ -1,3 +1,10 @@
+backport-iwlwifi-dkms (8324-0ubuntu2) groovy; urgency=medium
+
+  * dkms: add OBSOLETE_BY=5.4.0 (LP: #1863583)
+  * debian: drop modaliases support (LP: #1869587)
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Fri, 15 May 2020 16:28:22 +0800
+
 backport-iwlwifi-dkms (8324-0ubuntu1) focal; urgency=low
 
   * New release
