@@ -1,3 +1,9 @@
+backport-iwlwifi-dkms (8324-0ubuntu3) groovy; urgency=medium
+
+  * autopkgtest: fix autopkgtest runs on after OBSOLETE_BY=5.4.0.
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Mon, 01 Jun 2020 16:58:28 +0800
+
 backport-iwlwifi-dkms (8324-0ubuntu2) groovy; urgency=medium
 
   * dkms: add OBSOLETE_BY=5.4.0 (LP: #1863583)
