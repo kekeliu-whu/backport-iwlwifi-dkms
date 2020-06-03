@@ -10,7 +10,7 @@ GENERATED_DKMS_FILES= \
     debian/backport-iwlwifi-dkms.dkms
 
 %:
-	dh $@ --with dkms,modaliases
+	dh $@ --with dkms
 
 override_dh_auto_configure:
 override_dh_auto_build:
