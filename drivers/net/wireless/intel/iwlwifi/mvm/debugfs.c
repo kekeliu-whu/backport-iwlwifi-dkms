@@ -5,10 +5,9 @@
  *
  * GPL LICENSE SUMMARY
  *
- * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2012 - 2014, 2018 - 2020 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -28,10 +27,9 @@
  *
  * BSD LICENSE
  *
- * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2012 - 2014, 2018 - 2020 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -554,6 +552,11 @@ static ssize_t iwl_dbgfs_amsdu_len_write(struct ieee80211_sta *sta,
 
 	if (kstrtou16(buf, 0, &amsdu_len))
 		return -EINVAL;
+
+	/* only change from debug set <-> debug unset */
+	if ((amsdu_len && mvmsta->orig_amsdu_len) ||
+	    (!!amsdu_len && mvmsta->orig_amsdu_len))
+		return -EBUSY;
 
 	if (amsdu_len) {
 		mvmsta->orig_amsdu_len = sta->max_amsdu_len;
@@ -1849,11 +1852,11 @@ static ssize_t iwl_dbgfs_tx_power_status_read(struct file *file,
 	char buf[64];
 	int bufsz = sizeof(buf);
 	int pos = 0;
-	u32 mode = le32_to_cpu(mvm->txp_cmd.v5.v3.set_mode);
+	u32 mode = le32_to_cpu(mvm->txp_cmd.common.set_mode);
 	bool txp_cmd_valid = mode == IWL_TX_POWER_MODE_SET_DEVICE;
-	u16 val_24 = le16_to_cpu(mvm->txp_cmd.v5.v3.dev_24);
-	u16 val_52l = le16_to_cpu(mvm->txp_cmd.v5.v3.dev_52_low);
-	u16 val_52h = le16_to_cpu(mvm->txp_cmd.v5.v3.dev_52_high);
+	u16 val_24 = le16_to_cpu(mvm->txp_cmd.common.dev_24);
+	u16 val_52l = le16_to_cpu(mvm->txp_cmd.common.dev_52_low);
+	u16 val_52h = le16_to_cpu(mvm->txp_cmd.common.dev_52_high);
 	char buf_24[15] = "(not limited)";
 	char buf_52l[15] = "(not limited)";
 	char buf_52h[15] = "(not limited)";
