@@ -5,10 +5,9 @@
  *
  * GPL LICENSE SUMMARY
  *
- * Copyright(c) 2007 - 2014 Intel Corporation. All rights reserved.
+ * Copyright(c) 2007 - 2014, 2018 - 2020  Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -28,10 +27,9 @@
  *
  * BSD LICENSE
  *
- * Copyright(c) 2005 - 2014 Intel Corporation. All rights reserved.
+ * Copyright(c) 2005 - 2014, 2018 - 2020 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -93,7 +91,7 @@
 
 #define DRV_DESCRIPTION	"Intel(R) Wireless WiFi driver for Linux"
 MODULE_DESCRIPTION(DRV_DESCRIPTION);
-MODULE_AUTHOR(DRV_COPYRIGHT " " DRV_AUTHOR);
+MODULE_AUTHOR(DRV_AUTHOR);
 MODULE_LICENSE("GPL");
 
 #ifdef CPTCFG_IWLWIFI_DEBUGFS
@@ -1771,7 +1769,7 @@ static void iwl_req_fw_callback(const struct firmware *ucode_raw, void *context)
 				kmemdup(pieces->dbg_conf_tlv[i],
 					pieces->dbg_conf_tlv_len[i],
 					GFP_KERNEL);
-			if (!pieces->dbg_conf_tlv[i])
+			if (!drv->fw.dbg.conf_tlv[i])
 				goto out_free_fw;
 		}
 	}
@@ -2133,7 +2131,6 @@ static int __init iwl_drv_init(void)
 #endif
 
 	pr_info(DRV_DESCRIPTION "\n");
-	pr_info(DRV_COPYRIGHT "\n");
 
 #ifdef CPTCFG_IWLWIFI_DEBUGFS
 	/* Create the root of iwlwifi debugfs subsystem. */
@@ -2143,12 +2140,6 @@ static int __init iwl_drv_init(void)
 	err = iwl_pci_register_driver();
 	if (err)
 		goto cleanup_debugfs;
-
-	err = iwl_virtio_register_driver();
-	if (err) {
-		iwl_pci_unregister_driver();
-		goto cleanup_debugfs;
-	}
 
 	return 0;
 
@@ -2170,7 +2161,6 @@ module_init(iwl_drv_init);
 static void __exit iwl_drv_exit(void)
 {
 	iwl_pci_unregister_driver();
-	iwl_virtio_unregister_driver();
 
 #ifdef CPTCFG_IWLWIFI_DEBUGFS
 	debugfs_remove_recursive(iwl_dbgfs_root);
@@ -2209,11 +2199,6 @@ MODULE_PARM_DESC(amsdu_size,
 		 "4K for other devices 1:4K 2:8K 3:12K 4: 2K (default 0)");
 module_param_named(fw_restart, iwlwifi_mod_params.fw_restart, bool, 0444);
 MODULE_PARM_DESC(fw_restart, "restart firmware in case of error (default true)");
-
-module_param_named(antenna_coupling, iwlwifi_mod_params.antenna_coupling,
-		   int, 0444);
-MODULE_PARM_DESC(antenna_coupling,
-		 "specify antenna coupling in dB (default: 0 dB)");
 
 module_param_named(nvm_file, iwlwifi_mod_params.nvm_file, charp, 0444);
 MODULE_PARM_DESC(nvm_file, "NVM file name");
