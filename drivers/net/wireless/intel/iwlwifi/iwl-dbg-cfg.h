@@ -7,7 +7,7 @@
  *
  * Copyright(c) 2013 - 2015 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright (C) 2018-2019 Intel Corporation
+ * Copyright (C) 2018-2020 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -29,7 +29,7 @@
  *
  * Copyright(c) 2013 - 2015 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright (C) 2018-2019 Intel Corporation
+ * Copyright (C) 2018-2020 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -206,16 +206,17 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG_NODEF(bool, MVM_FTM_INITIATOR_FAST_ALGO_DISABLE)
 	IWL_DBG_CFG(bool, MVM_D3_DEBUG)
 	IWL_DBG_CFG(bool, MVM_USE_TWT)
+	IWL_DBG_CFG(bool, MVM_TWT_TESTMODE)
 	IWL_DBG_CFG(u32, MVM_AMPDU_CONSEC_DROPS_DELBA)
 	IWL_MVM_MOD_PARAM(int, power_scheme)
 	IWL_MVM_MOD_PARAM(bool, init_dbg)
-	IWL_MVM_MOD_PARAM(bool, tfd_q_hang_detect)
 	IWL_DBG_CFG(bool, MVM_FTM_INITIATOR_ENABLE_SMOOTH)
 	IWL_DBG_CFG_RANGE(u8, MVM_FTM_INITIATOR_SMOOTH_ALPHA, 0, 100)
 	/* 667200 is 200m RTT */
 	IWL_DBG_CFG_RANGE(u32, MVM_FTM_INITIATOR_SMOOTH_UNDERSHOOT, 0, 667200)
 	IWL_DBG_CFG_RANGE(u32, MVM_FTM_INITIATOR_SMOOTH_OVERSHOOT, 0, 667200)
 	IWL_DBG_CFG(u32, MVM_FTM_INITIATOR_SMOOTH_AGE_SEC)
+	IWL_DBG_CFG(bool, MVM_DISABLE_AP_FILS)
 #endif /* CPTCFG_IWLMVM */
 #ifdef CPTCFG_IWLWIFI_DEVICE_TESTMODE
 	IWL_DBG_CFG_NODEF(u32, dnt_out_mode)
@@ -274,9 +275,11 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG_STR(fw_file_pre)
 	IWL_DBG_CFG_NODEF(u32, valid_ants)
 	IWL_DBG_CFG_NODEF(u32, no_ack_en)
+	IWL_DBG_CFG_NODEF(u32, ack_en)
 	IWL_DBG_CFG_NODEF(bool, no_ldpc)
 	IWL_DBG_CFG_NODEF(u16, rx_agg_subframes)
 	IWL_DBG_CFG_NODEF(bool, tx_siso_80bw_like_160bw)
+	IWL_DBG_CFG_NODEF(u16, ampdu_limit)
 	IWL_DBG_CFG_NODEF(u16, rx_mcs_80)
 	IWL_DBG_CFG_NODEF(u16, tx_mcs_80)
 	IWL_DBG_CFG_NODEF(u16, rx_mcs_160)
@@ -286,7 +289,6 @@ struct iwl_dbg_cfg {
 	IWL_MOD_PARAM(bool, fw_restart)
 	IWL_MOD_PARAM(bool, power_save)
 	IWL_MOD_PARAM(bool, bt_coex_active)
-	IWL_MOD_PARAM(int, antenna_coupling)
 	IWL_MOD_PARAM(int, power_level)
 	IWL_MOD_PARAM(int, led_mode)
 	IWL_MOD_PARAM(int, amsdu_size)
