@@ -1,4 +1,4 @@
-From 436871ec96c59dd238d7a603b1e140e90a232b88 Mon Sep 17 00:00:00 2001
+From 56023cc83aa6aa4afe8202d3b2cbaa42ec92b78d Mon Sep 17 00:00:00 2001
 From: You-Sheng Yang <vicamo.yang@canonical.com>
 Date: Wed, 18 Dec 2019 22:28:08 +0800
 Subject: [PATCH] backport: address interface change in linux/skbuff.h since
@@ -22,7 +22,7 @@ Signed-off-by: You-Sheng Yang <vicamo.yang@canonical.com>
  2 files changed, 16 insertions(+), 2 deletions(-)
 
 diff --git a/include/net/fq.h b/include/net/fq.h
-index f142ee96b..ec04ae9bc 100644
+index c7f913c4c..9db2b8516 100644
 --- a/include/net/fq.h
 +++ b/include/net/fq.h
 @@ -73,7 +73,14 @@ struct fq {
@@ -38,11 +38,11 @@ index f142ee96b..ec04ae9bc 100644
 +      ((LINUX_VERSION_CODE == KERNEL_VERSION(4,15,18)) && \
 +       (((UTS_UBUNTU_RELEASE_ABI >= 73) && (UTS_UBUNTU_RELEASE_ABI < 1000)) || \
 +        (UTS_UBUNTU_RELEASE_ABI >= 1066)))))
- 	siphash_key_t   perturbation;
+ 	siphash_key_t	perturbation;
  #else
  	u32 perturbation;
 diff --git a/include/net/fq_impl.h b/include/net/fq_impl.h
-index 86d5c56b2..20a1d271b 100644
+index 7a2ccdbae..f9d8f5f22 100644
 --- a/include/net/fq_impl.h
 +++ b/include/net/fq_impl.h
 @@ -112,7 +112,14 @@ static u32 fq_flow_idx(struct fq *fq, struct sk_buff *skb)
@@ -62,5 +62,5 @@ index 86d5c56b2..20a1d271b 100644
  #else
  	u32 hash = skb_get_hash_perturb(skb, fq->perturbation);
 -- 
-2.24.0
+2.27.0.rc0
 
