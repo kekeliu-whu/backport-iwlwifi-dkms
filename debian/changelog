@@ -1,3 +1,15 @@
+backport-iwlwifi-dkms (8613-0ubuntu1) bionic; urgency=low
+
+  * New release
+    - upstream version 8613 commit 7db018c8995975.
+    - update debian/backport-iwlwifi-dkms.modaliases.
+
+  * debian/patches:
+    - Update 0006-backport-address-interface-change-in-linux-skbuff.h-.patch
+    - Add 0007-backport-netlink-remove-NLA_EXACT_LEN_WARN.patch
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Fri, 31 Jul 2020 09:48:47 +0800
+
 backport-iwlwifi-dkms (8324-0ubuntu1) bionic; urgency=low
 
   * New release
