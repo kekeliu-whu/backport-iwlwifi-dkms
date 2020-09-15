@@ -147,8 +147,12 @@ enum iwl_ucode_tlv_type {
 	IWL_UCODE_TLV_UMAC_DEBUG_ADDRS	= 54,
 	IWL_UCODE_TLV_LMAC_DEBUG_ADDRS	= 55,
 	IWL_UCODE_TLV_FW_RECOVERY_INFO	= 57,
+	IWL_UCODE_TLV_HW_TYPE			= 58,
 	IWL_UCODE_TLV_FW_FMAC_RECOVERY_INFO	= 59,
 	IWL_UCODE_TLV_FW_FSEQ_VERSION		= 60,
+
+	IWL_UCODE_TLV_PNVM_VERSION		= 62,
+	IWL_UCODE_TLV_PNVM_SKU			= 64,
 
 	IWL_UCODE_TLV_FW_NUM_STATIONS		= IWL_UCODE_TLV_CONST_BASE + 0,
 
@@ -219,7 +223,7 @@ struct iwl_ucode_capa {
  *	treats good CRC threshold as a boolean
  * @IWL_UCODE_TLV_FLAGS_MFP: This uCode image supports MFP (802.11w).
  * @IWL_UCODE_TLV_FLAGS_UAPSD_SUPPORT: This uCode image supports uAPSD
- * @IWL_UCODE_TLV_FLAGS_SHORT_BL: 16 entries of black list instead of 64 in scan
+ * @IWL_UCODE_TLV_FLAGS_SHORT_BL: 16 entries of block list instead of 64 in scan
  *	offload profile config command.
  * @IWL_UCODE_TLV_FLAGS_D3_6_IPV6_ADDRS: D3 image supports up to six
  *	(rather than two) IPv6 addresses
@@ -289,7 +293,7 @@ typedef unsigned int __bitwise iwl_ucode_tlv_api_t;
  *	SCAN_OFFLOAD_PROFILES_QUERY_RSP_S.
  * @IWL_UCODE_TLV_API_MBSSID_HE: This ucode supports v2 of
  *	STA_CONTEXT_DOT11AX_API_S
- * @IWL_UCODE_TLV_CAPA_SAR_TABLE_VER: This ucode supports different sar
+ * @IWL_UCODE_TLV_API_SAR_TABLE_VER: This ucode supports different sar
  *	version tables.
  * @IWL_UCODE_TLV_API_REDUCED_SCAN_CONFIG: This ucode supports v3 of
  *  SCAN_CONFIG_DB_CMD_API_S.

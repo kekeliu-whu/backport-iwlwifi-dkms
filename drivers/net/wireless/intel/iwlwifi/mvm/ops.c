@@ -822,7 +822,7 @@ iwl_op_mode_mvm_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 	mvm->csi_cfg.frame_types = ~0ULL;
 #endif /* CPTCFG_IWLMVM_VENDOR_CMDS */
 
-	atomic_set(&mvm->queue_sync_counter, 0);
+	mvm->queue_sync_state = 0;
 
 	SET_IEEE80211_DEV(mvm->hw, mvm->trans->dev);
 
@@ -910,8 +910,6 @@ iwl_op_mode_mvm_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 	trans_cfg.cb_data_offs = offsetof(struct ieee80211_tx_info,
 					  driver_data[2]);
 
-	trans_cfg.sw_csum_tx = IWL_MVM_SW_TX_CSUM_OFFLOAD;
-
 	/* Set a short watchdog for the command queue */
 	trans_cfg.cmd_q_wdg_timeout =
 		iwl_mvm_get_wd_timeout(mvm, NULL, false, true);
@@ -966,7 +964,7 @@ iwl_op_mode_mvm_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 		goto out_free;
 
 	mutex_lock(&mvm->mutex);
-	err = iwl_run_init_mvm_ucode(mvm, true);
+	err = iwl_run_init_mvm_ucode(mvm);
 	if (err && err != -ERFKILL)
 		iwl_fw_dbg_error_collect(&mvm->fwrt, FW_DBG_TRIGGER_DRIVER);
 	if (!iwlmvm_mod_params.init_dbg || !err)
@@ -1025,6 +1023,20 @@ iwl_op_mode_mvm_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 
 	ieee80211_free_hw(mvm->hw);
 	return NULL;
+}
+
+void iwl_mvm_stop_device(struct iwl_mvm *mvm)
+{
+	lockdep_assert_held(&mvm->mutex);
+
+	iwl_fw_cancel_timestamp(&mvm->fwrt);
+
+	clear_bit(IWL_MVM_STATUS_FIRMWARE_RUNNING, &mvm->status);
+
+	iwl_fw_dbg_stop_sync(&mvm->fwrt);
+	iwl_trans_stop_device(mvm->trans);
+	iwl_free_fw_paging(&mvm->fwrt);
+	iwl_fw_dump_conf_clear(&mvm->fwrt);
 }
 
 static void iwl_op_mode_mvm_stop(struct iwl_op_mode *op_mode)
@@ -1482,6 +1494,12 @@ void iwl_mvm_nic_restart(struct iwl_mvm *mvm, bool fw_error)
 	} else if (mvm->fwrt.cur_fw_img == IWL_UCODE_REGULAR &&
 		   mvm->hw_registered &&
 		   !test_bit(STATUS_TRANS_DEAD, &mvm->trans->status)) {
+		/* This should be first thing before trying to collect any
+		 * data to avoid endless loops if any HW error happens while
+		 * collecting debug data.
+		 */
+		set_bit(IWL_MVM_STATUS_HW_RESTART_REQUESTED, &mvm->status);
+
 		if (mvm->fw->ucode_capa.error_log_size) {
 			u32 src_size = mvm->fw->ucode_capa.error_log_size;
 			u32 src_addr = mvm->fw->ucode_capa.error_log_addr;
@@ -1503,7 +1521,6 @@ void iwl_mvm_nic_restart(struct iwl_mvm *mvm, bool fw_error)
 
 		if (fw_error && mvm->fw_restart > 0)
 			mvm->fw_restart--;
-		set_bit(IWL_MVM_STATUS_HW_RESTART_REQUESTED, &mvm->status);
 		ieee80211_restart_hw(mvm->hw);
 	}
 }

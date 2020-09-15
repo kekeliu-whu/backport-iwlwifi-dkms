@@ -812,13 +812,9 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
 	}
 
 	hw->netdev_features |= mvm->cfg->features;
-	if (!iwl_mvm_is_csum_supported(mvm)) {
+	if (!iwl_mvm_is_csum_supported(mvm))
 		hw->netdev_features &= ~(IWL_TX_CSUM_NETIF_FLAGS |
 					 NETIF_F_RXCSUM);
-		/* We may support SW TX CSUM */
-		if (IWL_MVM_SW_TX_CSUM_OFFLOAD)
-			hw->netdev_features |= IWL_TX_CSUM_NETIF_FLAGS;
-	}
 
 	if (mvm->cfg->vht_mu_mimo_supported)
 		wiphy_ext_feature_set(hw->wiphy,
@@ -1485,10 +1481,14 @@ static void iwl_mvm_abort_channel_switch(struct ieee80211_hw *hw,
 	IWL_DEBUG_MAC80211(mvm, "Abort CSA on mac %d\n", mvmvif->id);
 
 	mutex_lock(&mvm->mutex);
-	WARN_ON(iwl_mvm_send_cmd_pdu(mvm,
-				     WIDE_ID(MAC_CONF_GROUP,
-					     CHANNEL_SWITCH_TIME_EVENT_CMD),
-				     0, sizeof(cmd), &cmd));
+	if (!fw_has_capa(&mvm->fw->ucode_capa,
+			 IWL_UCODE_TLV_CAPA_CHANNEL_SWITCH_CMD))
+		iwl_mvm_remove_csa_period(mvm, vif);
+	else
+		WARN_ON(iwl_mvm_send_cmd_pdu(mvm,
+					     WIDE_ID(MAC_CONF_GROUP,
+						     CHANNEL_SWITCH_TIME_EVENT_CMD),
+					     0, sizeof(cmd), &cmd));
 	mutex_unlock(&mvm->mutex);
 
 	WARN_ON(iwl_mvm_post_channel_switch(hw, vif));
@@ -2430,9 +2430,9 @@ static void iwl_mvm_bss_info_changed_station(struct iwl_mvm *mvm,
 	int ret;
 
 	/*
-	 * Re-calculate the tsf id, as the master-slave relations depend on the
-	 * beacon interval, which was not known when the station interface was
-	 * added.
+	 * Re-calculate the tsf id, as the leader-follower relations depend
+	 * on the beacon interval, which was not known when the station
+	 * interface was added.
 	 */
 	if (changes & BSS_CHANGED_ASSOC && bss_conf->assoc) {
 		if (vif->bss_conf.he_support &&
@@ -2650,8 +2650,9 @@ static int iwl_mvm_start_ap_ibss(struct ieee80211_hw *hw,
 		goto out_unlock;
 
 	/*
-	 * Re-calculate the tsf id, as the master-slave relations depend on the
-	 * beacon interval, which was not known when the AP interface was added.
+	 * Re-calculate the tsf id, as the leader-follower relations depend on
+	 * the beacon interval, which was not known when the AP interface
+	 * was added.
 	 */
 	if (vif->type == NL80211_IFTYPE_AP)
 		iwl_mvm_mac_ctxt_recalc_tsf_id(mvm, vif);
@@ -3267,7 +3268,7 @@ static int iwl_mvm_mac_sta_state(struct ieee80211_hw *hw,
 		 * than 16. We can't avoid connecting at all, so refuse the
 		 * station state change, this will cause mac80211 to abandon
 		 * attempts to connect to this AP, and eventually wpa_s will
-		 * blacklist the AP...
+		 * blocklist the AP...
 		 */
 		if (vif->type == NL80211_IFTYPE_STATION &&
 		    vif->bss_conf.beacon_int < 16) {
@@ -3277,6 +3278,9 @@ static int iwl_mvm_mac_sta_state(struct ieee80211_hw *hw,
 			ret = -EINVAL;
 			goto out_unlock;
 		}
+
+		if (vif->type == NL80211_IFTYPE_STATION)
+			vif->bss_conf.he_support = sta->he_cap.has_he;
 
 		if (sta->tdls &&
 		    (vif->p2p ||
@@ -5260,12 +5264,10 @@ void iwl_mvm_sync_rx_queues_internal(struct iwl_mvm *mvm,
 
 	if (notif->sync) {
 		notif->cookie = mvm->queue_sync_cookie;
-		atomic_set(&mvm->queue_sync_counter,
-			   mvm->trans->num_rx_queues);
+		mvm->queue_sync_state = (1 << mvm->trans->num_rx_queues) - 1;
 	}
 
-	ret = iwl_mvm_notify_rx_queue(mvm, qmask, (u8 *)notif,
-				      size, !notif->sync);
+	ret = iwl_mvm_notify_rx_queue(mvm, qmask, notif, size, !notif->sync);
 	if (ret) {
 		IWL_ERR(mvm, "Failed to trigger RX queues sync (%d)\n", ret);
 		goto out;
@@ -5274,14 +5276,16 @@ void iwl_mvm_sync_rx_queues_internal(struct iwl_mvm *mvm,
 	if (notif->sync) {
 		lockdep_assert_held(&mvm->mutex);
 		ret = wait_event_timeout(mvm->rx_sync_waitq,
-					 atomic_read(&mvm->queue_sync_counter) == 0 ||
+					 mvm->queue_sync_state == 0 ||
 					 iwl_mvm_is_radio_killed(mvm),
 					 SYNC_RX_QUEUE_TIMEOUT);
-		WARN_ON_ONCE(!ret && !iwl_mvm_is_radio_killed(mvm));
+		WARN_ONCE(!ret && !iwl_mvm_is_radio_killed(mvm),
+			  "queue sync: failed to sync, state is 0x%lx\n",
+			  mvm->queue_sync_state);
 	}
 
 out:
-	atomic_set(&mvm->queue_sync_counter, 0);
+	mvm->queue_sync_state = 0;
 	if (notif->sync)
 		mvm->queue_sync_cookie++;
 }

@@ -109,7 +109,7 @@
 #define DEVICE_SET_NMI_VAL_DRV BIT(7)
 /* Device NMI register and value for 9000 family and above hw's */
 #define UREG_NIC_SET_NMI_DRIVER 0x00a05c10
-#define UREG_NIC_SET_NMI_DRIVER_NMI_FROM_DRIVER_MSK 0xff000000
+#define UREG_NIC_SET_NMI_DRIVER_NMI_FROM_DRIVER BIT(24)
 
 /* Shared registers (0x0..0x3ff, via target indirect or periphery */
 #define SHR_BASE	0x00a10000
@@ -407,10 +407,6 @@ enum {
 #define CNVR_AUX_MISC_CHIP				0xA2B800
 #define CNVR_SCU_SD_REGS_SD_REG_DIG_DCDC_VTRIM		0xA29890
 #define CNVR_SCU_SD_REGS_SD_REG_ACTIVE_VDIG_MIRROR	0xA29938
-
-enum {
-	HW_STEP_LOCATION_BITS = 24,
-};
 
 #define PREG_AUX_BUS_WPROT_0		0xA04CC0
 

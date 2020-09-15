@@ -771,6 +771,7 @@ void iwl_mvm_rx_session_protect_notif(struct iwl_mvm *mvm,
 	struct iwl_rx_packet *pkt = rxb_addr(rxb);
 	struct iwl_mvm_session_prot_notif *notif = (void *)pkt->data;
 	struct ieee80211_vif *vif;
+	struct iwl_mvm_vif *mvmvif;
 
 	rcu_read_lock();
 	vif = iwl_mvm_rcu_dereference_vif_id(mvm, le32_to_cpu(notif->mac_id),
@@ -779,9 +780,10 @@ void iwl_mvm_rx_session_protect_notif(struct iwl_mvm *mvm,
 	if (!vif)
 		goto out_unlock;
 
+	mvmvif = iwl_mvm_vif_from_mac80211(vif);
+
 	/* The vif is not a P2P_DEVICE, maintain its time_event_data */
 	if (vif->type != NL80211_IFTYPE_P2P_DEVICE) {
-		struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
 		struct iwl_mvm_time_event_data *te_data =
 			&mvmvif->time_event_data;
 
@@ -816,10 +818,12 @@ void iwl_mvm_rx_session_protect_notif(struct iwl_mvm *mvm,
 
 	if (!le32_to_cpu(notif->status) || !le32_to_cpu(notif->start)) {
 		/* End TE, notify mac80211 */
+		mvmvif->time_event_data.id = SESSION_PROTECT_CONF_MAX_ID;
 		ieee80211_remain_on_channel_expired(mvm->hw);
 		set_bit(IWL_MVM_STATUS_NEED_FLUSH_P2P, &mvm->status);
 		iwl_mvm_roc_finished(mvm);
 	} else if (le32_to_cpu(notif->start)) {
+		mvmvif->time_event_data.id = le32_to_cpu(notif->conf_id);
 		set_bit(IWL_MVM_STATUS_ROC_RUNNING, &mvm->status);
 		ieee80211_ready_on_channel(mvm->hw); /* Start TE */
 	}
@@ -968,6 +972,7 @@ static void iwl_mvm_cancel_session_protection(struct iwl_mvm *mvm,
 			cpu_to_le32(FW_CMD_ID_AND_COLOR(mvmvif->id,
 							mvmvif->color)),
 		.action = cpu_to_le32(FW_CTXT_ACTION_REMOVE),
+		.conf_id = cpu_to_le32(mvmvif->time_event_data.id),
 	};
 	int ret;
 
@@ -988,10 +993,13 @@ void iwl_mvm_stop_roc(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 			IWL_UCODE_TLV_CAPA_SESSION_PROT_CMD)) {
 		mvmvif = iwl_mvm_vif_from_mac80211(vif);
 
-		iwl_mvm_cancel_session_protection(mvm, mvmvif);
-
-		if (vif->type == NL80211_IFTYPE_P2P_DEVICE)
+		if (vif->type == NL80211_IFTYPE_P2P_DEVICE) {
+			iwl_mvm_cancel_session_protection(mvm, mvmvif);
 			set_bit(IWL_MVM_STATUS_NEED_FLUSH_P2P, &mvm->status);
+		} else {
+			iwl_mvm_remove_aux_roc_te(mvm, mvmvif,
+						  &mvmvif->time_event_data);
+		}
 
 		iwl_mvm_roc_finished(mvm);
 
@@ -1014,6 +1022,28 @@ void iwl_mvm_stop_roc(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 	}
 
 	iwl_mvm_roc_finished(mvm);
+}
+
+void iwl_mvm_remove_csa_period(struct iwl_mvm *mvm,
+			       struct ieee80211_vif *vif)
+{
+	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
+	struct iwl_mvm_time_event_data *te_data = &mvmvif->time_event_data;
+	u32 id;
+
+	lockdep_assert_held(&mvm->mutex);
+
+	if (!te_data->running)
+		return;
+
+	spin_lock_bh(&mvm->time_event_lock);
+	id = te_data->id;
+	spin_unlock_bh(&mvm->time_event_lock);
+
+	if (id != TE_CHANNEL_SWITCH_PERIOD)
+		return;
+
+	iwl_mvm_remove_time_event(mvm, mvmvif, te_data);
 }
 
 int iwl_mvm_schedule_csa_period(struct iwl_mvm *mvm,
