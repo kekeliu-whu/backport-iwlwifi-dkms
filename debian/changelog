@@ -1,3 +1,13 @@
+backport-iwlwifi-dkms (8720-1) UNRELEASED; urgency=low
+
+  * New release
+    - upstream version 8720 commit 7cc738d4ce248d.
+
+  * debian/patches:
+    - Drop 0007-backport-netlink-remove-NLA_EXACT_LEN_WARN.patch
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Tue, 15 Sep 2020 17:44:14 +0800
+
 backport-iwlwifi-dkms (8662-1) UNRELEASED; urgency=low
 
   * New release
