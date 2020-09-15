@@ -419,6 +419,8 @@ int ieee80211_add_virtual_monitor(struct ieee80211_local *local)
 		return ret;
 	}
 
+	set_bit(SDATA_STATE_RUNNING, &sdata->state);
+
 	ret = ieee80211_check_queues(sdata, NL80211_IFTYPE_MONITOR);
 	if (ret) {
 		kfree(sdata);
@@ -643,6 +645,11 @@ int ieee80211_do_open(struct wireless_dev *wdev, bool coming_up)
 		} else if (sdata->vif.type == NL80211_IFTYPE_ADHOC) {
 			local->fif_probe_req++;
 		}
+
+		if (sdata->vif.probe_req_reg)
+			drv_config_iface_filter(local, sdata,
+						FIF_PROBE_REQ,
+						FIF_PROBE_REQ);
 
 		if (sdata->vif.type != NL80211_IFTYPE_P2P_DEVICE &&
 		    sdata->vif.type != NL80211_IFTYPE_NAN)

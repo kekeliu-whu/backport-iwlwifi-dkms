@@ -1,62 +1,8 @@
-/******************************************************************************
- *
- * This file is provided under a dual BSD/GPLv2 license.  When using or
- * redistributing this file, you may do so under either license.
- *
- * GPL LICENSE SUMMARY
- *
- * Copyright(c) 2015 - 2017 Intel Deutschland GmbH
- * Copyright (C) 2007 - 2014, 2018 - 2020 Intel Corporation
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
- *
- * The full GNU General Public License is included in this distribution
- * in the file called COPYING.
- *
- * Contact Information:
- *  Intel Linux Wireless <linuxwifi@intel.com>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- * BSD LICENSE
- *
- * Copyright(c) 2017   Intel Deutschland GmbH
- * Copyright (C) 2005 - 2014, 2018 - 2020 Intel Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- *  * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- *  * Neither the name Intel Corporation nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *****************************************************************************/
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
+/*
+ * Copyright (C) 2005-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2015-2017 Intel Deutschland GmbH
+ */
 #include <linux/module.h>
 #include <linux/types.h>
 
@@ -290,6 +236,9 @@ static struct iwl_op_mode *iwl_xvt_start(struct iwl_trans *trans,
 
 	trans_cfg.cb_data_offs = offsetof(struct iwl_xvt_skb_info, trans);
 
+	trans_cfg.fw_reset_handshake = fw_has_capa(&xvt->fw->ucode_capa,
+						   IWL_UCODE_TLV_CAPA_FW_RESET_HANDSHAKE);
+
 	/* Configure transport layer */
 	iwl_trans_configure(xvt->trans, &trans_cfg);
 	trans->command_groups = trans_cfg.command_groups;
@@ -447,6 +396,49 @@ verify:
 	return &xvt->tx_meta_data[lmac_id];
 }
 
+static void iwl_xvt_txpath_flush(struct iwl_xvt *xvt,
+				 struct iwl_rx_packet *resp_pkt)
+{
+	int i;
+	int num_flushed_queues;
+	struct iwl_tx_path_flush_cmd_rsp *rsp;
+
+	if (iwl_fw_lookup_notif_ver(xvt->fw, LONG_GROUP, TXPATH_FLUSH, 0) == 0)
+		return;
+
+	if (WARN_ON_ONCE(iwl_rx_packet_payload_len(resp_pkt) != sizeof(*rsp)))
+		return;
+
+	rsp = (void *)resp_pkt->data;
+
+	num_flushed_queues = le16_to_cpu(rsp->num_flushed_queues);
+	if (WARN_ONCE(num_flushed_queues > IWL_TX_FLUSH_QUEUE_RSP,
+		      "num_flushed_queues %d", num_flushed_queues))
+		return;
+
+	for (i = 0; i < num_flushed_queues; i++) {
+		struct iwl_flush_queue_info *queue_info = &rsp->queues[i];
+		struct tx_meta_data *tx_data;
+		int tid = le16_to_cpu(queue_info->tid);
+		int read_before = le16_to_cpu(queue_info->read_before_flush);
+		int read_after = le16_to_cpu(queue_info->read_after_flush);
+		int queue_num = le16_to_cpu(queue_info->queue_num);
+
+		if (tid == IWL_MGMT_TID)
+			tid = IWL_MAX_TID_COUNT;
+
+		tx_data = iwl_xvt_rx_get_tx_meta_data(xvt, queue_num);
+		if (!tx_data)
+			continue;
+
+		IWL_DEBUG_TX_QUEUES(xvt,
+				    "tid %d queue_id %d read-before %d read-after %d\n",
+				    tid, queue_num, read_before, read_after);
+
+		iwl_xvt_reclaim_and_free(xvt, tx_data, queue_num, read_after);
+	}
+}
+
 static void iwl_xvt_rx_tx_cmd_single(struct iwl_xvt *xvt,
 				     struct iwl_rx_packet *pkt)
 {
@@ -569,6 +561,9 @@ static void iwl_xvt_rx_dispatch(struct iwl_op_mode *op_mode,
 		break;
 	case REPLY_RX_MPDU_CMD:
 		iwl_xvt_reorder(xvt, pkt);
+		break;
+	case TXPATH_FLUSH:
+		iwl_xvt_txpath_flush(xvt, pkt);
 		break;
 	case FRAME_RELEASE:
 		iwl_xvt_rx_frame_release(xvt, pkt);
