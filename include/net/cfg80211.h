@@ -2013,6 +2013,8 @@ struct cfg80211_scan_info {
  *	 which the above info relvant to
  * @unsolicited_probe: the AP transmits unsolicited probe response every 20 TU
  * @short_ssid_valid: short_ssid is valid and can be used
+ * @psc_no_listen: when set, and the channel is a PSC channel, no need to wait
+ *       20 TUs before starting to send probe requests.
  */
 struct cfg80211_scan_6ghz_params {
 	u32 short_ssid;
@@ -2020,6 +2022,7 @@ struct cfg80211_scan_6ghz_params {
 	u8 bssid[ETH_ALEN];
 	bool unsolicited_probe;
 	bool short_ssid_valid;
+	bool psc_no_listen;
 };
 
 /**
@@ -7748,5 +7751,11 @@ static inline bool cfg80211_is_psc(struct ieee80211_channel *chan)
 
 	return chan->band == NL80211_BAND_6GHZ && chan_num % 16 == 5;
 }
+
+/**
+ * cfg80211_bss_flush - resets all the scan entries
+ * @wiphy: the wiphy
+ */
+void cfg80211_bss_flush(struct wiphy *wiphy);
 
 #endif /* __NET_CFG80211_H */

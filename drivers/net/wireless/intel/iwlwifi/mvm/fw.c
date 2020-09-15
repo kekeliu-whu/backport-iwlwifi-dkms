@@ -83,6 +83,7 @@
 
 #define MVM_UCODE_ALIVE_TIMEOUT	(HZ * CPTCFG_IWL_TIMEOUT_FACTOR)
 #define MVM_UCODE_CALIB_TIMEOUT	(2 * HZ * CPTCFG_IWL_TIMEOUT_FACTOR)
+#define MVM_UCODE_PNVM_TIMEOUT	(HZ / 10 * CPTCFG_IWL_TIMEOUT_FACTOR)
 
 #define UCODE_VALID_OK	cpu_to_le32(0x1)
 
@@ -136,7 +137,14 @@ static int iwl_configure_rxq(struct iwl_mvm *mvm)
 		.dataflags[0] = IWL_HCMD_DFL_NOCOPY,
 	};
 
-	/* Do not configure default queue, it is configured via context info */
+	/*
+	 * The default queue is configured via context info, so if we
+	 * have a single queue, there's nothing to do here.
+	 */
+	if (mvm->trans->num_rx_queues == 1)
+		return 0;
+
+	/* skip the default queue */
 	num_queues = mvm->trans->num_rx_queues - 1;
 
 	size = struct_size(cmd, data, num_queues);
@@ -220,10 +228,29 @@ static bool iwl_alive_fn(struct iwl_notif_wait_data *notif_wait,
 	u16 status;
 	u32 lmac_error_event_table, umac_error_table;
 
-	/* we don't use the SKU ID from v5 yet, so handle it as v4 */
-	if (iwl_fw_lookup_notif_ver(mvm->fw, LONG_GROUP,
-				    UCODE_ALIVE_NTFY, 0) == 5 ||
-	    iwl_rx_packet_payload_len(pkt) == sizeof(struct iwl_alive_ntf_v4)) {
+	/*
+	 * For v5 and above, we can check the version, for older
+	 * versions we need to check the size.
+	 */
+	if (iwl_fw_lookup_notif_ver(mvm->fw, LEGACY_GROUP,
+				    UCODE_ALIVE_NTFY, 0) == 5) {
+		struct iwl_alive_ntf_v5 *palive;
+
+		palive = (void *)pkt->data;
+		umac = &palive->umac_data;
+		lmac1 = &palive->lmac_data[0];
+		lmac2 = &palive->lmac_data[1];
+		status = le16_to_cpu(palive->status);
+
+		mvm->trans->sku_id[0] = le32_to_cpu(palive->sku_id.data[0]);
+		mvm->trans->sku_id[1] = le32_to_cpu(palive->sku_id.data[1]);
+		mvm->trans->sku_id[2] = le32_to_cpu(palive->sku_id.data[2]);
+
+		IWL_DEBUG_FW(mvm, "Got sku_id: 0x0%x 0x0%x 0x0%x\n",
+			     mvm->trans->sku_id[0],
+			     mvm->trans->sku_id[1],
+			     mvm->trans->sku_id[2]);
+	} else if (iwl_rx_packet_payload_len(pkt) == sizeof(struct iwl_alive_ntf_v4)) {
 		struct iwl_alive_ntf_v4 *palive;
 
 		palive = (void *)pkt->data;
@@ -294,6 +321,20 @@ static bool iwl_alive_fn(struct iwl_notif_wait_data *notif_wait,
 	return true;
 }
 
+static bool iwl_pnvm_complete_fn(struct iwl_notif_wait_data *notif_wait,
+				 struct iwl_rx_packet *pkt, void *data)
+{
+	struct iwl_mvm *mvm =
+		container_of(notif_wait, struct iwl_mvm, notif_wait);
+	struct iwl_pnvm_init_complete_ntfy *pnvm_ntf = (void *)pkt->data;
+
+	IWL_DEBUG_FW(mvm,
+		     "PNVM complete notification received with status %d\n",
+		     le32_to_cpu(pnvm_ntf->status));
+
+	return true;
+}
+
 static bool iwl_wait_init_complete(struct iwl_notif_wait_data *notif_wait,
 				   struct iwl_rx_packet *pkt, void *data)
 {
@@ -315,6 +356,35 @@ static bool iwl_wait_phy_db_entry(struct iwl_notif_wait_data *notif_wait,
 	WARN_ON(iwl_phy_db_set_section(phy_db, pkt));
 
 	return false;
+}
+
+static int iwl_mvm_load_pnvm(struct iwl_mvm *mvm)
+{
+	struct iwl_notification_wait pnvm_wait;
+	static const u16 ntf_cmds[] = { WIDE_ID(REGULATORY_AND_NVM_GROUP,
+						PNVM_INIT_COMPLETE_NTFY) };
+
+	/* if the SKU_ID is empty, there's nothing to do */
+	if (!mvm->trans->sku_id[0] &&
+	    !mvm->trans->sku_id[1] &&
+	    !mvm->trans->sku_id[2])
+		return 0;
+
+	/*
+	 * TODO: phase 2: load the pnvm file, find the right section,
+	 * load it and set the right DMA pointer.
+	 */
+
+	iwl_init_notification_wait(&mvm->notif_wait, &pnvm_wait,
+				   ntf_cmds, ARRAY_SIZE(ntf_cmds),
+				   iwl_pnvm_complete_fn, NULL);
+
+	/* kick the doorbell */
+	iwl_write_umac_prph(mvm->trans, UREG_DOORBELL_TO_ISR6,
+			    UREG_DOORBELL_TO_ISR6_PNVM);
+
+	return iwl_wait_notification(&mvm->notif_wait, &pnvm_wait,
+				     MVM_UCODE_PNVM_TIMEOUT);
 }
 
 static int iwl_mvm_load_ucode_wait_alive(struct iwl_mvm *mvm,
@@ -404,6 +474,13 @@ static int iwl_mvm_load_ucode_wait_alive(struct iwl_mvm *mvm,
 		IWL_ERR(mvm, "Loaded ucode is not valid!\n");
 		iwl_fw_set_current_image(&mvm->fwrt, old_type);
 		return -EIO;
+	}
+
+	ret = iwl_mvm_load_pnvm(mvm);
+	if (ret) {
+		IWL_ERR(mvm, "Timeout waiting for PNVM load!\n");
+		iwl_fw_set_current_image(&mvm->fwrt, old_type);
+		return ret;
 	}
 
 	iwl_trans_fw_alive(mvm->trans, alive_data.scd_base_addr);
@@ -1459,41 +1536,6 @@ int iwl_mvm_up(struct iwl_mvm *mvm)
 		iwl_fw_start_dbg_conf(&mvm->fwrt, FW_DBG_START_FROM_ALIVE);
 	}
 
-#ifdef CPTCFG_MAC80211_LATENCY_MEASUREMENTS
-	if (iwl_fw_dbg_trigger_enabled(mvm->fw, FW_DBG_TRIGGER_TX_LATENCY)) {
-		struct iwl_fw_dbg_trigger_tlv *trig;
-		struct iwl_fw_dbg_trigger_tx_latency *thrshold_trig;
-		u32 thrshld;
-		u32 vif;
-		u32 iface = 0;
-		u16 tid;
-		u16 mode;
-		u32 window;
-
-		trig = iwl_fw_dbg_get_trigger(mvm->fw,
-					      FW_DBG_TRIGGER_TX_LATENCY);
-		vif = le32_to_cpu(trig->vif_type);
-		if (vif == IWL_FW_DBG_CONF_VIF_ANY) {
-			iface = BIT(IEEE80211_TX_LATENCY_BSS);
-			iface |= BIT(IEEE80211_TX_LATENCY_P2P);
-		} else if (vif <= IWL_FW_DBG_CONF_VIF_AP) {
-			iface = BIT(IEEE80211_TX_LATENCY_BSS);
-		} else {
-			iface = BIT(IEEE80211_TX_LATENCY_P2P);
-		}
-		thrshold_trig = (void *)trig->data;
-		thrshld = le32_to_cpu(thrshold_trig->thrshold);
-		tid = le16_to_cpu(thrshold_trig->tid_bitmap);
-		mode = le16_to_cpu(thrshold_trig->mode);
-		window = le32_to_cpu(thrshold_trig->window);
-		IWL_DEBUG_INFO(mvm,
-			       "Tx latency trigger cfg: threshold = %u, tid = 0x%x, mode = 0x%x, window = %u vif = 0x%x\n",
-			       thrshld, tid, mode, window, iface);
-		ieee80211_tx_lat_thrshld_cfg(mvm->hw, thrshld,
-					     tid, window, mode, iface);
-	}
-#endif
-
 	ret = iwl_send_tx_ant_cfg(mvm, iwl_mvm_get_valid_tx_ant(mvm));
 	if (ret)
 		goto error;
@@ -1540,7 +1582,7 @@ int iwl_mvm_up(struct iwl_mvm *mvm)
 	}
 
 	/* init the fw <-> mac80211 STA mapping */
-	for (i = 0; i < ARRAY_SIZE(mvm->fw_id_to_mac_id); i++)
+	for (i = 0; i < mvm->fw->ucode_capa.num_stations; i++)
 		RCU_INIT_POINTER(mvm->fw_id_to_mac_id[i], NULL);
 
 	mvm->tdls_cs.peer.sta_id = IWL_MVM_INVALID_STA;
@@ -1554,10 +1596,23 @@ int iwl_mvm_up(struct iwl_mvm *mvm)
 			goto error;
 	}
 
-	/* Add auxiliary station for scanning */
-	ret = iwl_mvm_add_aux_sta(mvm);
-	if (ret)
-		goto error;
+	/*
+	 * Add auxiliary station for scanning.
+	 * Newer versions of this command implies that the fw uses
+	 * internal aux station for all aux activities that don't
+	 * requires a dedicated data queue.
+	 */
+	if (iwl_fw_lookup_cmd_ver(mvm->fw, LONG_GROUP,
+				  ADD_STA,
+				  0) < 12) {
+		 /*
+		  * In old version the aux station uses mac id like other
+		  * station and not lmac id
+		  */
+		ret = iwl_mvm_add_aux_sta(mvm, MAC_INDEX_AUX);
+		if (ret)
+			goto error;
+	}
 
 	/* Add all the PHY contexts */
 	i = 0;
@@ -1743,13 +1798,24 @@ int iwl_mvm_load_d3_fw(struct iwl_mvm *mvm)
 		goto error;
 
 	/* init the fw <-> mac80211 STA mapping */
-	for (i = 0; i < ARRAY_SIZE(mvm->fw_id_to_mac_id); i++)
+	for (i = 0; i < mvm->fw->ucode_capa.num_stations; i++)
 		RCU_INIT_POINTER(mvm->fw_id_to_mac_id[i], NULL);
 
-	/* Add auxiliary station for scanning */
-	ret = iwl_mvm_add_aux_sta(mvm);
-	if (ret)
-		goto error;
+	if (iwl_fw_lookup_cmd_ver(mvm->fw, LONG_GROUP,
+				  ADD_STA,
+				  0) < 12) {
+		/*
+		 * Add auxiliary station for scanning.
+		 * Newer versions of this command implies that the fw uses
+		 * internal aux station for all aux activities that don't
+		 * requires a dedicated data queue.
+		 * In old version the aux station uses mac id like other
+		 * station and not lmac id
+		 */
+		ret = iwl_mvm_add_aux_sta(mvm, MAC_INDEX_AUX);
+		if (ret)
+			goto error;
+	}
 
 	return 0;
  error:

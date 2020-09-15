@@ -1014,6 +1014,7 @@ struct iwl_trans {
 	u32 hw_rf_id;
 	u32 hw_id;
 	char hw_id_str[52];
+	u32 sku_id[3];
 
 	u8 rx_mpdu_cmd, rx_mpdu_cmd_hdr_size;
 
@@ -1055,7 +1056,7 @@ struct iwl_trans {
 
 	/* pointer to trans specific struct */
 	/*Ensure that this pointer will always be aligned to sizeof pointer */
-	char trans_specific[0] __aligned(sizeof(void *));
+	char trans_specific[] __aligned(sizeof(void *));
 };
 
 const char *iwl_get_cmd_string(struct iwl_trans *trans, u32 id);

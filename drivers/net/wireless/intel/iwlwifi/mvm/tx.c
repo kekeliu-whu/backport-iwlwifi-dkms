@@ -803,11 +803,7 @@ unsigned int iwl_mvm_max_amsdu_size(struct iwl_mvm *mvm,
 	enum nl80211_band band = mvmsta->vif->bss_conf.chandef.chan->band;
 	u8 ac = tid_to_mac80211_ac[tid];
 	unsigned int txf;
-	int lmac = IWL_LMAC_24G_INDEX;
-
-	if (iwl_mvm_is_cdb_supported(mvm) &&
-	    band == NL80211_BAND_5GHZ)
-		lmac = IWL_LMAC_5G_INDEX;
+	int lmac = iwl_mvm_get_lmac_id(mvm->fw, band);
 
 	/* For HE redirect to trigger based fifos */
 	if (sta->he_cap.has_he && !WARN_ON(!iwl_mvm_has_new_tx_api(mvm)))
@@ -1394,21 +1390,6 @@ static void iwl_mvm_hwrate_to_tx_status(u32 rate_n_flags,
 	iwl_mvm_hwrate_to_tx_rate(rate_n_flags, info->band, r);
 }
 
-#ifdef CPTCFG_MAC80211_LATENCY_MEASUREMENTS
-static void iwl_mvm_tx_lat_add_ts_ack(struct sk_buff *skb)
-{
-	s64 temp = ktime_to_ms(ktime_get());
-	s64 ts_1 = ktime_to_ns(skb->tstamp) >> 32;
-	s64 diff = temp - ts_1;
-
-#if LINUX_VERSION_IS_LESS(4,10,0)
-	skb->tstamp.tv64 += diff;
-#else
-	skb->tstamp += diff;
-#endif
-}
-#endif
-
 static void iwl_mvm_tx_status_check_trigger(struct iwl_mvm *mvm,
 					    u32 status)
 {
@@ -1494,9 +1475,6 @@ static void iwl_mvm_rx_tx_cmd_single(struct iwl_mvm *mvm,
 		struct ieee80211_hdr *hdr = (void *)skb->data;
 		bool flushed = false;
 
-#ifdef CPTCFG_MAC80211_LATENCY_MEASUREMENTS
-		iwl_mvm_tx_lat_add_ts_ack(skb);
-#endif
 		skb_freed++;
 
 		iwl_trans_free_tx_cmd(mvm->trans, info->driver_data[1]);
@@ -1809,7 +1787,7 @@ static void iwl_mvm_tx_reclaim(struct iwl_mvm *mvm, int sta_id, int tid,
 	struct sk_buff *skb;
 	int freed;
 
-	if (WARN_ONCE(sta_id >= IWL_MVM_STATION_COUNT ||
+	if (WARN_ONCE(sta_id >= mvm->fw->ucode_capa.num_stations ||
 		      tid > IWL_MAX_TID_COUNT,
 		      "sta_id %d tid %d", sta_id, tid))
 		return;
@@ -1886,9 +1864,6 @@ static void iwl_mvm_tx_reclaim(struct iwl_mvm *mvm, int sta_id, int tid,
 		struct ieee80211_hdr *hdr = (void *)skb->data;
 		struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
 
-#ifdef CPTCFG_MAC80211_LATENCY_MEASUREMENTS
-		iwl_mvm_tx_lat_add_ts_ack(skb);
-#endif
 		if (ieee80211_is_data_qos(hdr->frame_control))
 			freed++;
 		else
@@ -2101,7 +2076,7 @@ int iwl_mvm_flush_sta_tids(struct iwl_mvm *mvm, u32 sta_id,
 	return ret;
 }
 
-int iwl_mvm_flush_sta(struct iwl_mvm *mvm, void *sta, bool internal, u32 flags)
+int iwl_mvm_flush_sta(struct iwl_mvm *mvm, void *sta, bool internal)
 {
 	struct iwl_mvm_int_sta *int_sta = sta;
 	struct iwl_mvm_sta *mvm_sta = sta;
@@ -2110,12 +2085,10 @@ int iwl_mvm_flush_sta(struct iwl_mvm *mvm, void *sta, bool internal, u32 flags)
 		     offsetof(struct iwl_mvm_sta, sta_id));
 
 	if (iwl_mvm_has_new_tx_api(mvm))
-		return iwl_mvm_flush_sta_tids(mvm, mvm_sta->sta_id,
-					      0xffff, flags);
+		return iwl_mvm_flush_sta_tids(mvm, mvm_sta->sta_id, 0xffff, 0);
 
 	if (internal)
-		return iwl_mvm_flush_tx_path(mvm, int_sta->tfd_queue_msk,
-					     flags);
+		return iwl_mvm_flush_tx_path(mvm, int_sta->tfd_queue_msk, 0);
 
-	return iwl_mvm_flush_tx_path(mvm, mvm_sta->tfd_queue_msk, flags);
+	return iwl_mvm_flush_tx_path(mvm, mvm_sta->tfd_queue_msk, 0);
 }

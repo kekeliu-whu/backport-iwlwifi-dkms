@@ -371,10 +371,6 @@ static int ieee80211_ifa_changed(struct notifier_block *nb,
 
 	sdata_unlock(sdata);
 
-#ifdef CPTCFG_IWLMVM_VENDOR_CMDS
-	ieee80211_check_fast_rx_iface(sdata);
-#endif
-
 	return NOTIFY_OK;
 }
 #endif
@@ -1419,21 +1415,6 @@ void ieee80211_free_hw(struct ieee80211_hw *hw)
 	idr_for_each(&local->ack_status_frames,
 		     ieee80211_free_ack_frame, NULL);
 	idr_destroy(&local->ack_status_frames);
-
-#ifdef CPTCFG_MAC80211_LATENCY_MEASUREMENTS
-	{
-		struct ieee80211_tx_latency_threshold *tx_thrshld;
-
-		kfree(rcu_access_pointer(local->tx_latency));
-		kfree(rcu_access_pointer(local->tx_consec));
-		tx_thrshld = rcu_access_pointer(local->tx_threshold);
-		if (tx_thrshld) {
-			kfree(tx_thrshld->thresholds_bss);
-			kfree(tx_thrshld->thresholds_p2p);
-		}
-		kfree(tx_thrshld);
-	}
-#endif /* CPTCFG_MAC80211_LATENCY_MEASUREMENTS */
 
 	sta_info_stop(local);
 
