@@ -599,12 +599,12 @@ static int cfg80211_parse_colocated_ap(const struct cfg80211_bss_ies *ies,
 
 	/* RNR IE may contain more than one NEIGHBOR_AP_INFO */
 	while (pos + IEEE80211_MIN_AP_NEIGHBOR_INFO_SIZE <= end) {
-		struct cfg80211_neighbor_ap_info *ap_info;
+		struct ieee80211_neighbor_ap_info *ap_info;
 		enum nl80211_band band;
 		int freq;
 		u8 length, i, count;
 
-		ap_info = (struct cfg80211_neighbor_ap_info *)pos;
+		ap_info = (struct ieee80211_neighbor_ap_info *)pos;
 		count = u8_get_bits(ap_info->tbtt_info_hdr,
 				    IEEE80211_AP_INFO_TBTT_HDR_COUNT) + 1;
 		length = ap_info->tbtt_info_len;
@@ -726,10 +726,16 @@ static int cfg80211_scan_6ghz(struct cfg80211_registered_device *rdev)
 	struct cfg80211_scan_request *request, *rdev_req = rdev->scan_req;
 	LIST_HEAD(coloc_ap_list);
 	bool need_scan_psc = true;
+	const struct ieee80211_sband_iftype_data *iftd;
 
 	rdev_req->scan_6ghz = true;
 
 	if (!rdev->wiphy.bands[NL80211_BAND_6GHZ])
+		return -EOPNOTSUPP;
+
+	iftd = ieee80211_get_sband_iftype_data(rdev->wiphy.bands[NL80211_BAND_6GHZ],
+					       rdev_req->wdev->iftype);
+	if (!iftd || !iftd->he_cap.has_he)
 		return -EOPNOTSUPP;
 
 	n_channels = rdev->wiphy.bands[NL80211_BAND_6GHZ]->n_channels;
@@ -1808,8 +1814,8 @@ cfg80211_get_bss_channel(struct wiphy *wiphy, const u8 *ie, size_t ielen,
 		return channel;
 	}
 
-	freq = ieee80211_channel_to_frequency(channel_number, channel->band);
-	alt_channel = ieee80211_get_channel(wiphy, freq);
+	freq = ieee80211_channel_to_freq_khz(channel_number, channel->band);
+	alt_channel = ieee80211_get_channel_khz(wiphy, freq);
 	if (!alt_channel) {
 		if (channel->band == NL80211_BAND_2GHZ) {
 			/*
