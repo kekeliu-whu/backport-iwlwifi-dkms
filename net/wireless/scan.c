@@ -725,7 +725,7 @@ static int cfg80211_scan_6ghz(struct cfg80211_registered_device *rdev)
 	int n_channels, count = 0, err;
 	struct cfg80211_scan_request *request, *rdev_req = rdev->scan_req;
 	LIST_HEAD(coloc_ap_list);
-	bool need_scan_psc;
+	bool need_scan_psc = true;
 
 	rdev_req->scan_6ghz = true;
 
@@ -761,20 +761,18 @@ static int cfg80211_scan_6ghz(struct cfg80211_registered_device *rdev)
 		(void *)&request->channels[n_channels];
 
 	/*
-	 * PSC channels should not be scanned if all the reported co-located APs
-	 * are indicating that all APs in the same ESS are co-located
+	 * PSC channels should not be scanned in case of direct scan with 1 SSID
+	 * and at least one of the reported co-located APs with same SSID
+	 * indicating that all APs in the same ESS are co-located
 	 */
-	if (count) {
-		need_scan_psc = false;
-
+	if (count && request->n_ssids == 1 && request->ssids[0].ssid_len) {
 		list_for_each_entry(ap, &coloc_ap_list, list) {
-			if (!ap->colocated_ess) {
-				need_scan_psc = true;
+			if (ap->colocated_ess &&
+			    cfg80211_find_ssid_match(ap, request)) {
+				need_scan_psc = false;
 				break;
 			}
 		}
-	} else {
-		need_scan_psc = true;
 	}
 
 	/*
@@ -823,6 +821,16 @@ static int cfg80211_scan_6ghz(struct cfg80211_registered_device *rdev)
 		scan_6ghz_params->short_ssid = ap->short_ssid;
 		scan_6ghz_params->short_ssid_valid = ap->short_ssid_valid;
 		scan_6ghz_params->unsolicited_probe = ap->unsolicited_probe;
+
+		/*
+		 * If a PSC channel is added to the scan and 'need_scan_psc' is
+		 * set to false, then all the APs that the scan logic is
+		 * interested with on the channel are collocated and thus there
+		 * is no need to perform the initial PSC channel listen.
+		 */
+		if (cfg80211_is_psc(chan) && !need_scan_psc)
+			scan_6ghz_params->psc_no_listen = true;
+
 		request->n_6ghz_params++;
 	}
 
@@ -1179,6 +1187,16 @@ void cfg80211_bss_expire(struct cfg80211_registered_device *rdev)
 {
 	__cfg80211_bss_expire(rdev, jiffies - IEEE80211_SCAN_RESULT_EXPIRE);
 }
+
+void cfg80211_bss_flush(struct wiphy *wiphy)
+{
+	struct cfg80211_registered_device *rdev = wiphy_to_rdev(wiphy);
+
+	spin_lock_bh(&rdev->bss_lock);
+	__cfg80211_bss_expire(rdev, jiffies);
+	spin_unlock_bh(&rdev->bss_lock);
+}
+EXPORT_SYMBOL(cfg80211_bss_flush);
 
 const struct element *
 cfg80211_find_elem_match(u8 eid, const u8 *ies, unsigned int len,
@@ -1863,6 +1881,9 @@ cfg80211_inform_single_bss_data(struct wiphy *wiphy,
 	tmp.pub.beacon_interval = beacon_interval;
 	tmp.pub.capability = capability;
 	tmp.ts_boottime = data->boottime_ns;
+	tmp.parent_tsf = data->parent_tsf;
+	ether_addr_copy(tmp.parent_bssid, data->parent_bssid);
+
 	if (non_tx_data) {
 		tmp.pub.transmitted_bss = non_tx_data->tx_bss;
 		ts = bss_from_pub(non_tx_data->tx_bss)->ts;

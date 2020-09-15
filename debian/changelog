@@ -1,3 +1,10 @@
+backport-iwlwifi-dkms (8662-1) UNRELEASED; urgency=low
+
+  * New release
+    - upstream version 8662 commit cea90b5758a73b.
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Tue, 15 Sep 2020 17:13:06 +0800
+
 backport-iwlwifi-dkms (8613-1) UNRELEASED; urgency=low
 
   * New release

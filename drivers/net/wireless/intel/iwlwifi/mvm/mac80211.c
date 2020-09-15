@@ -593,6 +593,14 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
 
 	hw->wiphy->flags |= WIPHY_FLAG_IBSS_RSN;
 	wiphy_ext_feature_set(hw->wiphy, NL80211_EXT_FEATURE_VHT_IBSS);
+
+	/* The new Tx API does not allow to pass the key or keyid of a MPDU to
+	 * the hw, preventing us to control which key(id) to use per MPDU.
+	 * Till that's fixed we can't use Extended Key ID for the newer cards.
+	 */
+	if (!iwl_mvm_has_new_tx_api(mvm))
+		wiphy_ext_feature_set(hw->wiphy,
+				      NL80211_EXT_FEATURE_EXT_KEY_ID);
 	hw->wiphy->features |= NL80211_FEATURE_HT_IBSS;
 
 	hw->wiphy->regulatory_flags |= REGULATORY_ENABLE_RELAX_NO_IR;
@@ -733,8 +741,6 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
 				      NL80211_EXT_FEATURE_SCAN_START_TIME);
 		wiphy_ext_feature_set(hw->wiphy,
 				      NL80211_EXT_FEATURE_BSS_PARENT_TSF);
-		wiphy_ext_feature_set(hw->wiphy,
-				      NL80211_EXT_FEATURE_SET_SCAN_DWELL);
 	}
 
 	if (iwl_mvm_is_oce_supported(mvm)) {
@@ -889,7 +895,7 @@ static void iwl_mvm_mac_tx(struct ieee80211_hw *hw,
 			iwl_mvm_vif_from_mac80211(info->control.vif);
 		u8 ap_sta_id = READ_ONCE(mvmvif->ap_sta_id);
 
-		if (ap_sta_id < IWL_MVM_STATION_COUNT) {
+		if (ap_sta_id < mvm->fw->ucode_capa.num_stations) {
 			/* mac80211 holds rcu read lock */
 			sta = rcu_dereference(mvm->fw_id_to_mac_id[ap_sta_id]);
 			if (IS_ERR_OR_NULL(sta))
@@ -1293,13 +1299,8 @@ void __iwl_mvm_mac_stop(struct iwl_mvm *mvm)
 
 	/* async_handlers_wk is now blocked */
 
-	/*
-	 * The work item could be running or queued if the
-	 * ROC time event stops just as we get here.
-	 */
-	flush_work(&mvm->roc_done_wk);
-
-	iwl_mvm_rm_aux_sta(mvm);
+	if (iwl_fw_lookup_cmd_ver(mvm->fw, LONG_GROUP, ADD_STA, 0) < 12)
+		iwl_mvm_rm_aux_sta(mvm);
 
 	iwl_mvm_stop_device(mvm);
 
@@ -1351,11 +1352,14 @@ static void iwl_mvm_mac_stop(struct ieee80211_hw *hw)
 	 */
 	clear_bit(IWL_MVM_STATUS_FIRMWARE_RUNNING, &mvm->status);
 
-#ifdef CPTCFG_MAC80211_LATENCY_MEASUREMENTS
-	cancel_delayed_work_sync(&mvm->tx_latency_watchdog_wk);
-#endif /* CPTCFG_MAC80211_LATENCY_MEASUREMENTS */
 	cancel_delayed_work_sync(&mvm->cs_tx_unblock_dwork);
 	cancel_delayed_work_sync(&mvm->scan_timeout_dwork);
+
+	/*
+	 * The work item could be running or queued if the
+	 * ROC time event stops just as we get here.
+	 */
+	flush_work(&mvm->roc_done_wk);
 
 	mutex_lock(&mvm->mutex);
 	__iwl_mvm_mac_stop(mvm);
@@ -1443,9 +1447,7 @@ static int iwl_mvm_post_channel_switch(struct ieee80211_hw *hw,
 			goto out_unlock;
 		}
 
-		if (!fw_has_capa(&mvm->fw->ucode_capa,
-				 IWL_UCODE_TLV_CAPA_CHANNEL_SWITCH_CMD))
-			iwl_mvm_sta_modify_disable_tx(mvm, mvmsta, false);
+		iwl_mvm_sta_modify_disable_tx(mvm, mvmsta, false);
 
 		iwl_mvm_mac_ctxt_changed(mvm, vif, false, NULL);
 
@@ -3036,7 +3038,7 @@ void iwl_mvm_sta_pm_notif(struct iwl_mvm *mvm, struct iwl_rx_cmd_buffer *rxb)
 	struct iwl_mvm_sta *mvmsta;
 	bool sleeping = (notif->type != IWL_MVM_PM_EVENT_AWAKE);
 
-	if (WARN_ON(notif->sta_id >= ARRAY_SIZE(mvm->fw_id_to_mac_id)))
+	if (WARN_ON(notif->sta_id >= mvm->fw->ucode_capa.num_stations))
 		return;
 
 	rcu_read_lock();
@@ -3966,6 +3968,17 @@ static int iwl_mvm_roc(struct ieee80211_hw *hw,
 		if (fw_has_capa(&mvm->fw->ucode_capa,
 				IWL_UCODE_TLV_CAPA_HOTSPOT_SUPPORT)) {
 			/* Use aux roc framework (HS20) */
+			if (iwl_fw_lookup_cmd_ver(mvm->fw, LONG_GROUP,
+						  ADD_STA, 0) >= 12) {
+				u32 lmac_id;
+
+				lmac_id = iwl_mvm_get_lmac_id(mvm->fw,
+							      channel->band);
+				ret = iwl_mvm_add_aux_sta(mvm, lmac_id);
+				if (WARN(ret,
+					 "Failed to allocate aux station"))
+					goto out_unlock;
+			}
 			ret = iwl_mvm_send_aux_roc_cmd(mvm, channel,
 						       vif, duration);
 			goto out_unlock;
@@ -4850,7 +4863,7 @@ static void iwl_mvm_flush_no_vif(struct iwl_mvm *mvm, u32 queues, bool drop)
 	}
 
 	mutex_lock(&mvm->mutex);
-	for (i = 0; i < ARRAY_SIZE(mvm->fw_id_to_mac_id); i++) {
+	for (i = 0; i < mvm->fw->ucode_capa.num_stations; i++) {
 		struct ieee80211_sta *sta;
 
 		sta = rcu_dereference_protected(mvm->fw_id_to_mac_id[i],
@@ -4892,7 +4905,7 @@ static void iwl_mvm_mac_flush(struct ieee80211_hw *hw,
 	mvmvif = iwl_mvm_vif_from_mac80211(vif);
 
 	/* flush the AP-station and all TDLS peers */
-	for (i = 0; i < ARRAY_SIZE(mvm->fw_id_to_mac_id); i++) {
+	for (i = 0; i < mvm->fw->ucode_capa.num_stations; i++) {
 		sta = rcu_dereference_protected(mvm->fw_id_to_mac_id[i],
 						lockdep_is_held(&mvm->mutex));
 		if (IS_ERR_OR_NULL(sta))
@@ -4906,7 +4919,7 @@ static void iwl_mvm_mac_flush(struct ieee80211_hw *hw,
 		WARN_ON(i != mvmvif->ap_sta_id && !sta->tdls);
 
 		if (drop) {
-			if (iwl_mvm_flush_sta(mvm, mvmsta, false, 0))
+			if (iwl_mvm_flush_sta(mvm, mvmsta, false))
 				IWL_ERR(mvm, "flush request fail\n");
 		} else {
 			msk |= mvmsta->tfd_queue_msk;
@@ -5103,7 +5116,7 @@ static void iwl_mvm_mac_sta_statistics(struct ieee80211_hw *hw,
 	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
 
 	if (mvmsta->avg_energy) {
-		sinfo->signal_avg = mvmsta->avg_energy;
+		sinfo->signal_avg = -(s8)mvmsta->avg_energy;
 		sinfo->filled |= BIT_ULL(NL80211_STA_INFO_SIGNAL_AVG);
 	}
 
@@ -5211,248 +5224,6 @@ static void iwl_mvm_event_bar_rx_callback(struct iwl_mvm *mvm,
 				event->u.ba.ssn);
 }
 
-#ifdef CPTCFG_MAC80211_LATENCY_MEASUREMENTS
-#define MARKER_CMD_TX_LAT_PAYLOAD_SIZE 5
-#define MARKER_CMD_TX_LAT_TID_OFFSET 12
-#define MARKER_CMD_TX_LAT_DEFAULT_WIN 1000
-#define MARKER_CMD_TX_LAT_UNKNOWN 0xffffffff
-
-static u32 iwl_mvm_send_latency_marker_cmd(struct iwl_mvm *mvm, u32 msrmnt,
-					   u16 seq, u16 tid)
-{
-	struct timespec64 ts;
-	int ret;
-	struct iwl_mvm_marker_rsp *rsp;
-	struct iwl_mvm_marker *marker;
-	struct iwl_host_cmd cmd = {
-		.id = MARKER_CMD,
-		.flags = CMD_WANT_SKB,
-	};
-	u32 cmd_size = sizeof(struct iwl_mvm_marker) +
-		MARKER_CMD_TX_LAT_PAYLOAD_SIZE * sizeof(u32);
-
-	ktime_get_real_ts64(&ts);
-
-	marker = kzalloc(cmd_size, GFP_KERNEL);
-	if (!marker)
-		return -ENOMEM;
-
-	cmd.data[0] = marker;
-	cmd.len[0] = cmd_size;
-
-	marker->dw_len = 0x8;
-	marker->marker_id = MARKER_ID_TX_FRAME_LATENCY;
-	marker->timestamp = cpu_to_le64(ts.tv_sec * 1000 +
-					ts.tv_nsec / 1000000);
-	/* metadata[0]-frame latency */
-	marker->metadata[0] = cpu_to_le32(msrmnt);
-	/* metadata[1]-delta in msec from UTC to frame enter the kernel */
-	marker->metadata[1] = cpu_to_le32(MARKER_CMD_TX_LAT_UNKNOWN);
-	/* metadata[2]-delta in msec from UTC to frame enter the NIC */
-	marker->metadata[2] = cpu_to_le32(MARKER_CMD_TX_LAT_UNKNOWN);
-	/* metadata[3]-delta in msec from UTC to frecieved from the NIC */
-	marker->metadata[3] = cpu_to_le32(MARKER_CMD_TX_LAT_UNKNOWN);
-	/* metadata[4]-bits:16-31-TFD Queue ID, 12-15-TID, 0-11-sequence */
-	marker->metadata[4] = cpu_to_le32(0xffff0000 |
-		((0xf & tid) << MARKER_CMD_TX_LAT_TID_OFFSET) |
-		(seq & 0x0fff));
-
-	mutex_lock(&mvm->mutex);
-	ret = iwl_mvm_send_cmd(mvm, &cmd);
-	mutex_unlock(&mvm->mutex);
-	if (ret) {
-		IWL_ERR(mvm, "Couldn't send MARKER_CMD: %d\n", ret);
-		goto out;
-	}
-
-	rsp = (void *)cmd.resp_pkt->data;
-	ret = le32_to_cpu(rsp->gp2);
-	iwl_free_resp(&cmd);
-out:
-	kfree(marker);
-	return ret;
-}
-
-/*
- * Trigger the fw log collection in case of a Tx packet that has crossed a
- * configured threshold.
- *
- * There are 3 differnt modes of triggering:
- *
- * Immediate Internal buffer mode:
- * The driver will retrieve monitor/usniffer data on the first driver
- * notification and wait for 1 second (during this 1 second it will not issue
- * another monitor/usniffer retrieve request). During this 1 second the driver
- * will store all notifications data to the trace including GP2 timestamp for
- * every notification. Also special mark will be sent to the firmware for every
- * notification.
- *
- * Delayed Internal buffer mode:
- * During the window interval the driver will calculate which tx had the
- * largest latency. When the monitor_collect_window expires the driver will
- * retrieve monitor/sniffer and print the notification for the packet with max
- * latency to the trace including GP2 timestamp. Also special mark will be sent
- * to the firmware for every notification.
- *
- * Continuous External buffer mode:
- * The mode is used when we are able to direct the usniffer logs to an external
- * memory device (should be started/stopped Manually).
- * During the window interval the driver will calculate which tx had the
- * largest latency. When the monitor_collect_window expires the driver print
- * the notification for the packet with max latency to the trace including GP2
- * timestamp. Also special mark will be sent to the firmware for every
- * notification.
- */
-
-/*
- * TX latency monitor watchdog is armed upon first latency notification.
- * It fires when monitor window is expired and does the following:
- * - immediate internal buffer mode: just reset start_round_ts flag
- * - delayed internal buffer mode: writes metadata to trace-cmd and collects
- *   firmware dump
- * - continuous external buffer mode: just writes metadata to trace-cmd
- */
-void iwl_mvm_tx_latency_watchdog_wk(struct work_struct *wk)
-{
-	struct iwl_mvm *mvm =
-		container_of(wk, struct iwl_mvm, tx_latency_watchdog_wk.work);
-	struct iwl_fw_dbg_trigger_tlv *trig;
-	struct ieee80211_tx_latency_event *tx_lat = &mvm->last_tx_lat_event;
-	struct ieee80211_tx_latency_event *max = &mvm->round_max_tx_lat;
-	u32 round_dur = tx_lat->monitor_collec_wind;
-
-	mvm->start_round_ts = 0;
-
-	if (!round_dur)
-		return;
-
-	if (tx_lat->mode == IEEE80211_TX_LATENCY_EXT_BUF) {
-		trace_iwlwifi_dev_tx_latency_thrshld(mvm->dev, max->msrmnt,
-						     max->pkt_start,
-						     max->pkt_end,
-						     max->tid, max->event_time,
-						     max->seq,
-						     mvm->max_tx_latency_gp2,
-						     1);
-		return;
-	}
-
-	trig = iwl_fw_dbg_get_trigger(mvm->fw, FW_DBG_TRIGGER_TX_LATENCY);
-	trace_iwlwifi_dev_tx_latency_thrshld(mvm->dev, max->msrmnt,
-					     max->pkt_start, max->pkt_end,
-					     max->tid, max->event_time,
-					     max->seq,
-					     mvm->max_tx_latency_gp2, 1);
-	iwl_fw_dbg_collect_trig(&mvm->fwrt, trig,
-				"Tx Latency threshold was crossed, seq: 0x%x, msrmnt: %d.",
-				max->seq, max->msrmnt);
-}
-
-/*
- * TX latency monitor work is scheduled upon every latency event. Regardless of
- * the monitor mode it as a first step sends firmware marker command containing
- * problematic packet's data - latency measurement, sequence number and TID.
- * It also obtains GP2 timestamp for this marker command.
- * The rest depends on monitor mode as follows:
- * 1. Immediate Internal Buffer mode.
- *    - arms watchdog to fire after monitor period (1 sec)
- *    - write packet's metadata to trace-cmd
- *    - only if the packet is the first one starting the monitor period,
- *      collect firmware dump
- * 2. Delayed Internal Buffer mode.
- *    - arms watchdog to fire after user defined monitor period
- *    - save largest latency packet's metadata
- * 3. Continuous External Buffer mode with delay.
- *    - arms watchdog to fire after user defined monitor period
- *    - save largest latency packet's metadata
- * 4. Continuous External Buffer mode without delay.
- *    - write packet's metadata to trace-cmd
- */
-void iwl_mvm_tx_latency_wk(struct work_struct *wk)
-{
-	struct iwl_mvm *mvm =
-		container_of(wk, struct iwl_mvm, tx_latency_wk);
-	struct iwl_fw_dbg_trigger_tlv *trig;
-	struct ieee80211_tx_latency_event *tx_lat = &mvm->last_tx_lat_event;
-	struct ieee80211_tx_latency_event *max = &mvm->round_max_tx_lat;
-	s64 ts = ktime_to_ms(ktime_get());
-	u32 round_dur = tx_lat->monitor_collec_wind;
-	u32 round_end = tx_lat->monitor_collec_wind ?
-		tx_lat->monitor_collec_wind : MARKER_CMD_TX_LAT_DEFAULT_WIN;
-	bool first_pkt = false;
-	u32 gp2 = 0;
-	u32 delay = 0;
-
-	if (!iwl_fw_dbg_trigger_enabled(mvm->fw, FW_DBG_TRIGGER_TX_LATENCY))
-		return;
-
-	trig = iwl_fw_dbg_get_trigger(mvm->fw, FW_DBG_TRIGGER_TX_LATENCY);
-
-	tx_lat->event_time = ktime_to_ms(ktime_get());
-
-	gp2 = iwl_mvm_send_latency_marker_cmd(mvm, tx_lat->msrmnt,
-					      tx_lat->seq, tx_lat->tid);
-	/*
-	 * If this is the first packet that crossed the threshold in the round
-	 * update start time stamp
-	 */
-	if (!mvm->start_round_ts) {
-		mvm->start_round_ts = ts;
-		first_pkt = true;
-		memcpy(max, tx_lat, sizeof(*tx_lat));
-		mvm->max_tx_latency_gp2 = gp2;
-		if (round_dur)
-			delay = msecs_to_jiffies(round_dur);
-		else if (tx_lat->mode == IEEE80211_TX_LATENCY_INT_BUF)
-			delay = msecs_to_jiffies(round_end);
-		if (delay)
-			schedule_delayed_work(&mvm->tx_latency_watchdog_wk,
-					      delay);
-	}
-
-	/*
-	 * Updated the packet with the max latency.
-	 */
-	if (round_dur && max->msrmnt < tx_lat->msrmnt) {
-		memcpy(max, tx_lat, sizeof(*tx_lat));
-		mvm->max_tx_latency_gp2 = gp2;
-	}
-
-	if (round_dur)
-		return;
-
-	if (tx_lat->mode == IEEE80211_TX_LATENCY_EXT_BUF) {
-		trace_iwlwifi_dev_tx_latency_thrshld(mvm->dev, tx_lat->msrmnt,
-						     tx_lat->pkt_start,
-						     tx_lat->pkt_end,
-						     tx_lat->tid,
-						     tx_lat->event_time,
-						     tx_lat->seq, gp2, 0);
-		return;
-	}
-
-	trace_iwlwifi_dev_tx_latency_thrshld(mvm->dev, tx_lat->msrmnt,
-					     tx_lat->pkt_start,
-					     tx_lat->pkt_end,
-					     tx_lat->tid, tx_lat->event_time,
-					     tx_lat->seq, gp2, 0);
-	if (first_pkt)
-		iwl_fw_dbg_collect_trig(&mvm->fwrt, trig,
-					"Tx Latency threshold was crossed, seq: 0x%x, msrmnt: %d.",
-					tx_lat->seq, tx_lat->msrmnt);
-}
-
-static void
-iwl_mvm_event_tx_latency_callback(struct iwl_mvm *mvm,
-				  struct ieee80211_vif *vif,
-				  const struct ieee80211_event *event)
-{
-	memcpy(&mvm->last_tx_lat_event, &event->u.tx_lat,
-	       sizeof(event->u.tx_lat));
-	schedule_work(&mvm->tx_latency_wk);
-}
-#endif /* CPTCFG_MAC80211_LATENCY_MEASUREMENTS */
-
 static void iwl_mvm_mac_event_callback(struct ieee80211_hw *hw,
 				       struct ieee80211_vif *vif,
 				       const struct ieee80211_event *event)
@@ -5470,11 +5241,6 @@ static void iwl_mvm_mac_event_callback(struct ieee80211_hw *hw,
 		iwl_mvm_event_frame_timeout_callback(mvm, vif, event->u.ba.sta,
 						     event->u.ba.tid);
 		break;
-#ifdef CPTCFG_MAC80211_LATENCY_MEASUREMENTS
-	case TX_LATENCY_EVENT:
-		iwl_mvm_event_tx_latency_callback(mvm, vif, event);
-		break;
-#endif /* CPTCFG_MAC80211_LATENCY_MEASUREMENTS */
 	default:
 		break;
 	}

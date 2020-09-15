@@ -90,6 +90,7 @@ struct iwl_ucode_header {
 };
 
 #define IWL_UCODE_TLV_DEBUG_BASE	0x1000005
+#define IWL_UCODE_TLV_CONST_BASE	0x100
 
 /*
  * new TLV uCode file layout
@@ -148,6 +149,8 @@ enum iwl_ucode_tlv_type {
 	IWL_UCODE_TLV_FW_RECOVERY_INFO	= 57,
 	IWL_UCODE_TLV_FW_FMAC_RECOVERY_INFO	= 59,
 	IWL_UCODE_TLV_FW_FSEQ_VERSION		= 60,
+
+	IWL_UCODE_TLV_FW_NUM_STATIONS		= IWL_UCODE_TLV_CONST_BASE + 0,
 
 	IWL_UCODE_TLV_TYPE_DEBUG_INFO		= IWL_UCODE_TLV_DEBUG_BASE + 0,
 	IWL_UCODE_TLV_TYPE_BUFFER_ALLOCATION	= IWL_UCODE_TLV_DEBUG_BASE + 1,
@@ -947,24 +950,6 @@ struct iwl_fw_dbg_trigger_ba {
 	__le16 tx_bar;
 	__le16 frame_timeout;
 } __packed;
-
-#ifdef CPTCFG_MAC80211_LATENCY_MEASUREMENTS
-/**
- * struct iwl_fw_dbg_trigger_tx_latency - configures tx latency related trigger
- * @thrshold: the wanted threshold.
- * @tid_bitmap: the tid to apply the threshold on
- * @mode: recording mode (Internal buffer or continues recording)
- * @window: the size of the window before collecting.
- * @reserved: reserved.
- */
-struct iwl_fw_dbg_trigger_tx_latency {
-	__le32 thrshold;
-	__le16 tid_bitmap;
-	__le16 mode;
-	__le32 window;
-	__le32 reserved[4];
-} __packed;
-#endif /* CPTCFG_MAC80211_LATENCY_MEASUREMENTS */
 
 /**
  * struct iwl_fw_dbg_trigger_tdls - configures trigger for TDLS events.

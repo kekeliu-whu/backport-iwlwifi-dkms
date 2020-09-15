@@ -868,15 +868,6 @@ struct iwl_mvm {
 
 	struct work_struct roc_done_wk;
 
-#ifdef CPTCFG_MAC80211_LATENCY_MEASUREMENTS
-	struct work_struct tx_latency_wk;
-	struct delayed_work tx_latency_watchdog_wk;
-	struct ieee80211_tx_latency_event last_tx_lat_event;
-	struct ieee80211_tx_latency_event round_max_tx_lat;
-	s64 start_round_ts;
-	u32 max_tx_latency_gp2;
-#endif /* CPTCFG_MAC80211_LATENCY_MEASUREMENTS */
-
 	unsigned long init_status;
 
 	unsigned long status;
@@ -928,7 +919,7 @@ struct iwl_mvm {
 
 	/* data related to data path */
 	struct iwl_rx_phy_info last_phy_info;
-	struct ieee80211_sta __rcu *fw_id_to_mac_id[IWL_MVM_STATION_COUNT];
+	struct ieee80211_sta __rcu *fw_id_to_mac_id[IWL_MVM_STATION_COUNT_MAX];
 	u8 rx_ba_sessions;
 
 	/* configured by mac80211 */
@@ -1292,7 +1283,7 @@ iwl_mvm_sta_from_staid_rcu(struct iwl_mvm *mvm, u8 sta_id)
 {
 	struct ieee80211_sta *sta;
 
-	if (sta_id >= ARRAY_SIZE(mvm->fw_id_to_mac_id))
+	if (sta_id >= mvm->fw->ucode_capa.num_stations)
 		return NULL;
 
 	sta = rcu_dereference(mvm->fw_id_to_mac_id[sta_id]);
@@ -1309,7 +1300,7 @@ iwl_mvm_sta_from_staid_protected(struct iwl_mvm *mvm, u8 sta_id)
 {
 	struct ieee80211_sta *sta;
 
-	if (sta_id >= ARRAY_SIZE(mvm->fw_id_to_mac_id))
+	if (sta_id >= mvm->fw->ucode_capa.num_stations)
 		return NULL;
 
 	sta = rcu_dereference_protected(mvm->fw_id_to_mac_id[sta_id],
@@ -1614,7 +1605,7 @@ const char *iwl_mvm_get_tx_fail_reason(u32 status);
 static inline const char *iwl_mvm_get_tx_fail_reason(u32 status) { return ""; }
 #endif
 int iwl_mvm_flush_tx_path(struct iwl_mvm *mvm, u32 tfd_msk, u32 flags);
-int iwl_mvm_flush_sta(struct iwl_mvm *mvm, void *sta, bool internal, u32 flags);
+int iwl_mvm_flush_sta(struct iwl_mvm *mvm, void *sta, bool internal);
 int iwl_mvm_flush_sta_tids(struct iwl_mvm *mvm, u32 sta_id,
 			   u16 tids, u32 flags);
 
@@ -1684,10 +1675,6 @@ int iwl_mvm_load_d3_fw(struct iwl_mvm *mvm);
 int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm);
 bool iwl_mvm_bcast_filter_build_cmd(struct iwl_mvm *mvm,
 				    struct iwl_bcast_filter_cmd *cmd);
-#ifdef CPTCFG_MAC80211_LATENCY_MEASUREMENTS
-void iwl_mvm_tx_latency_wk(struct work_struct *wk);
-void iwl_mvm_tx_latency_watchdog_wk(struct work_struct *wk);
-#endif /* CPTCFG_MAC80211_LATENCY_MEASUREMENTS */
 
 /*
  * FW notifications / CMD responses handlers
