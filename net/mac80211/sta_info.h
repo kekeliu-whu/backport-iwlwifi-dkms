@@ -69,6 +69,8 @@
  * @WLAN_STA_MPSP_RECIPIENT: local STA is recipient of a MPSP.
  * @WLAN_STA_PS_DELIVER: station woke up, but we're still blocking TX
  *	until pending frames are delivered
+ * @WLAN_STA_USES_ENCRYPTION: This station was configured for encryption,
+ *	so drop all packets without a key later.
  *
  * @NUM_WLAN_STA_FLAGS: number of defined flags
  */
@@ -292,57 +294,6 @@ struct sta_ampdu_mlme {
 	u8 dialog_token_allocator;
 };
 
-#ifdef CPTCFG_MAC80211_LATENCY_MEASUREMENTS
-/*
- * struct ieee80211_tx_consec_loss_stat - Tx consecutive loss statistics
- *
- * Measures TX consecutive loss for a station per TID.
- *
- * @consec_late_loss: number of consecutive frames that passed the late
- *	threshold and are considered  lost
- * @consec_total_loss: number of consecutive frames that passed the late
- *	threshold and are considered lost or were actually lost.
- * @late_bins: each bin counts how many consecutive frames latency is
- *	greater than the threshold in a certain range, and considered lost.
- * @loss_bins: each bin counts how many consecutive frames were lost in a
- *	certain range.
- * @total_loss_bins: counts how mant consecutive packets were lost & late
- *	within a certain range.
- * @bin_count: amount of bins.
- */
-struct ieee80211_tx_consec_loss_stat {
-	u32 consec_late_loss;
-	u32 consec_total_loss;
-	u32 *late_bins;
-	u32 *loss_bins;
-	u32 *total_loss_bins;
-	u32 bin_count;
-};
-
-/*
- * struct ieee80211_tx_latency_stat - Tx latency statistics
- *
- * Measures TX latency and jitter for a station per TID.
- *
- * @max: worst case latency
- * @sum: sum of all latencies
- * @counter: amount of Tx frames sent from interface
- * @bins: each bin counts how many frames transmitted within a certain
- * latency range. when disabled it is NULL.
- * @bin_count: amount of bins.
- * @max_ts: the kernel time stamp, in ms, of the tx packet with the
- *	highest latency.
- */
-struct ieee80211_tx_latency_stat {
-	u32 max;
-	u32 sum;
-	u32 counter;
-	u32 *bins;
-	u32 bin_count;
-	u32 max_ts;
-};
-#endif /* CPTCFG_MAC80211_LATENCY_MEASUREMENTS */
-
 /* Value to indicate no TID reservation */
 #define IEEE80211_TID_UNRESERVED	0xff
 
@@ -401,9 +352,6 @@ struct ieee80211_fast_rx {
 	u8 icv_len;
 	u8 key:1,
 	   sta_notify:1,
-#ifdef CPTCFG_IWLMVM_VENDOR_CMDS
-	   drop_grat_arp_unsol_na:1,
-#endif
 	   internal_forward:1,
 	   uses_rss:1;
 	u8 da_offs, sa_offs;
@@ -671,12 +619,6 @@ struct sta_info {
 	 * Aggregation information, locked with lock.
 	 */
 	struct sta_ampdu_mlme ampdu_mlme;
-
-#ifdef CPTCFG_MAC80211_LATENCY_MEASUREMENTS
-	struct ieee80211_tx_consec_loss_stat *tx_consec;
-	struct ieee80211_tx_latency_stat *tx_lat;
-	u32 *tx_lat_thrshld;
-#endif /* CPTCFG_MAC80211_LATENCY_MEASUREMENTS */
 
 #ifdef CPTCFG_MAC80211_DEBUGFS
 	struct dentry *debugfs_dir;
