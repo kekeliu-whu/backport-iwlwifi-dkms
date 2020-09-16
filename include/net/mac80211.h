@@ -230,7 +230,7 @@ struct ieee80211_chanctx_conf {
 
 	bool radar_enabled;
 
-	u8 drv_priv[0] __aligned(sizeof(void *));
+	u8 drv_priv[] __aligned(sizeof(void *));
 };
 
 /**
@@ -376,9 +376,6 @@ enum ieee80211_event_type {
 	MLME_EVENT,
 	BAR_RX_EVENT,
 	BA_FRAME_TIMEOUT,
-#ifdef CPTCFG_MAC80211_LATENCY_MEASUREMENTS
-	TX_LATENCY_EVENT,
-#endif /* CPTCFG_MAC80211_LATENCY_MEASUREMENTS */
 };
 
 /**
@@ -449,49 +446,6 @@ struct ieee80211_ba_event {
 	u16 ssn;
 };
 
-#ifdef CPTCFG_MAC80211_LATENCY_MEASUREMENTS
-/*
- * enum ieee80211_tx_latency_iface - ifaces that can have a latency threshold
- */
-enum ieee80211_tx_latency_iface {
-	IEEE80211_TX_LATENCY_BSS,
-	IEEE80211_TX_LATENCY_P2P,
-};
-
-/*
- * enum ieee80211_tx_latency_rec_mode - usniffer logs recording mode
- *  @IEEE80211_TX_LATENCY_INT_BUF: internal buffer to save usniffer logs
- *  @IEEE80211_TX_LATENCY_EXT_BUF: external buffer to save usniffer logs
- */
-enum ieee80211_tx_latency_rec_mode {
-	IEEE80211_TX_LATENCY_INT_BUF,
-	IEEE80211_TX_LATENCY_EXT_BUF
-};
-
-/*
- * struct ieee80211_tx_latency_event - data attached to an tx latency event
- *
- * @mode: recording mode (Internal buffer or continues recording)
- * @monitor_collec_wind: the size of the window to collect the logs
- * @seq: packet sequence
- * @pkt_start: start time of triggering pkt
- * @pkt_end: end time of triggering pkt
- * @msrmnt: the tx latency of the pkt
- * @tid: tid of the pkt
- * @event_time: the kernel time, in ms, in which the latency event occurred
- */
-struct ieee80211_tx_latency_event {
-	u16 mode;
-	u32 monitor_collec_wind;
-	u16 seq;
-	u32 pkt_start;
-	u32 pkt_end;
-	u32 msrmnt;
-	u16 tid;
-	u32 event_time;
-};
-#endif /* CPTCFG_MAC80211_LATENCY_MEASUREMENTS */
-
 /**
  * struct ieee80211_event - event to be sent to the driver
  * @type: The event itself. See &enum ieee80211_event_type.
@@ -507,9 +461,6 @@ struct ieee80211_event {
 		struct ieee80211_rssi_event rssi;
 		struct ieee80211_mlme_event mlme;
 		struct ieee80211_ba_event ba;
-#ifdef CPTCFG_MAC80211_LATENCY_MEASUREMENTS
-		struct ieee80211_tx_latency_event tx_lat;
-#endif /* CPTCFG_MAC80211_LATENCY_MEASUREMENTS */
 	} u;
 };
 
@@ -557,9 +508,9 @@ struct ieee80211_ftm_responder_params {
  * @he_support: does this BSS support HE
  * @twt_requester: does this BSS support TWT requester (relevant for managed
  *	mode only, set if the AP advertises TWT responder role)
- * @twt_protected: does this BSS support protected TWT frames
  * @twt_responder: does this BSS support TWT requester (relevant for managed
  *	mode only, set if the AP advertises TWT responder role)
+ * @twt_protected: does this BSS support protected TWT frames
  * @assoc: association status
  * @ibss_joined: indicates whether this station is part of an IBSS
  *	or not
@@ -655,7 +606,7 @@ struct ieee80211_ftm_responder_params {
  *	nontransmitted BSSIDs
  * @profile_periodicity: the least number of beacon frames need to be received
  *	in order to discover all the nontransmitted BSSIDs in the set.
- * @he_operation: HE operation information of the AP we are connected to
+ * @he_oper: HE operation information of the AP we are connected to
  * @he_obss_pd: OBSS Packet Detection parameters.
  * @he_bss_color: BSS coloring settings, if BSS supports HE
  */
@@ -669,8 +620,8 @@ struct ieee80211_bss_conf {
 	u16 frame_time_rts_th;
 	bool he_support;
 	bool twt_requester;
-	bool twt_protected;
 	bool twt_responder;
+	bool twt_protected;
 	/* association related data */
 	bool assoc, ibss_joined;
 	bool ibss_creator;
@@ -719,7 +670,10 @@ struct ieee80211_bss_conf {
 	u8 bssid_indicator;
 	bool ema_ap;
 	u8 profile_periodicity;
-	struct ieee80211_he_operation he_operation;
+	struct {
+		u32 params;
+		u16 nss_set;
+	} he_oper;
 	struct ieee80211_he_obss_pd he_obss_pd;
 	struct cfg80211_he_bss_color he_bss_color;
 };
@@ -871,6 +825,8 @@ enum mac80211_tx_info_flags {
  * @IEEE80211_TX_CTRL_AMSDU: This frame is an A-MSDU frame
  * @IEEE80211_TX_CTRL_FAST_XMIT: This frame is going through the fast_xmit path
  * @IEEE80211_TX_CTRL_SKIP_MPATH_LOOKUP: This frame skips mesh path lookup
+ * @IEEE80211_TX_CTRL_HW_80211_ENCAP: This frame uses hardware encapsulation
+ *	(header conversion)
  *
  * These flags are used in tx_info->control.flags.
  */
@@ -1386,6 +1342,7 @@ enum mac80211_rx_encoding {
  * @freq: frequency the radio was tuned to when receiving this frame, in MHz
  *	This field must be set for management frames, but isn't strictly needed
  *	for data (other) frames - for those it only affects radiotap reporting.
+ * @freq_offset: @freq has a positive offset of 500Khz.
  * @signal: signal strength when receiving this frame, either in dBm, in dB or
  *	unspecified depending on the hardware capabilities flags
  *	@IEEE80211_HW_SIGNAL_*
@@ -1416,7 +1373,7 @@ struct ieee80211_rx_status {
 	u32 device_timestamp;
 	u32 ampdu_reference;
 	u32 flag;
-	u16 freq;
+	u16 freq: 13, freq_offset: 1;
 	u8 enc_flags;
 	u8 encoding:2, bw:3, he_ru:3;
 	u8 he_gi:2, he_dcm:1;
@@ -1431,6 +1388,13 @@ struct ieee80211_rx_status {
 	u8 ampdu_delimiter_crc;
 	u8 zero_length_psdu_type;
 };
+
+static inline u32
+ieee80211_rx_status_to_khz(struct ieee80211_rx_status *rx_status)
+{
+	return MHZ_TO_KHZ(rx_status->freq) +
+	       (rx_status->freq_offset ? 500 : 0);
+}
 
 /**
  * struct ieee80211_vendor_radiotap - vendor radiotap data information
@@ -1676,6 +1640,8 @@ enum ieee80211_vif_flags {
  *	monitor interface (if that is requested.)
  * @probe_req_reg: probe requests should be reported to mac80211 for this
  *	interface.
+ * @rx_mcast_action_reg: multicast Action frames should be reported to mac80211
+ *	for this interface.
  * @drv_priv: data area for driver use, will always be aligned to
  *	sizeof(void \*).
  * @txq: the multicast data TX queue (if driver uses the TXQ abstraction)
@@ -1699,21 +1665,17 @@ struct ieee80211_vif {
 
 	u32 driver_flags;
 
-#ifdef CPTCFG_IWLMVM_VENDOR_CMDS
-	bool filter_grat_arp_unsol_na;
-	bool filter_gtk;
-#endif
-
 #ifdef CPTCFG_MAC80211_DEBUGFS
 	struct dentry *debugfs_dir;
 #endif
 
-	unsigned int probe_req_reg;
+	bool probe_req_reg;
+	bool rx_mcast_action_reg;
 
 	bool txqs_stopped[IEEE80211_NUM_ACS];
 
 	/* must be last */
-	u8 drv_priv[0] __aligned(sizeof(void *));
+	u8 drv_priv[] __aligned(sizeof(void *));
 };
 
 static inline bool ieee80211_vif_is_mesh(struct ieee80211_vif *vif)
@@ -1841,7 +1803,7 @@ struct ieee80211_key_conf {
 	s8 keyidx;
 	u16 flags;
 	u8 keylen;
-	u8 key[0];
+	u8 key[];
 };
 
 #define IEEE80211_MAX_PN_LEN	16
@@ -2098,7 +2060,7 @@ struct ieee80211_sta {
 	struct ieee80211_txq *txq[IEEE80211_NUM_TIDS + 1];
 
 	/* must be last */
-	u8 drv_priv[0] __aligned(sizeof(void *));
+	u8 drv_priv[] __aligned(sizeof(void *));
 };
 
 /**
@@ -2144,7 +2106,7 @@ struct ieee80211_txq {
 	u8 ac;
 
 	/* must be last */
-	u8 drv_priv[0] __aligned(sizeof(void *));
+	u8 drv_priv[] __aligned(sizeof(void *));
 };
 
 /**
@@ -3175,6 +3137,8 @@ void ieee80211_free_txskb(struct ieee80211_hw *hw, struct sk_buff *skb);
  * @FIF_PSPOLL: pass PS Poll frames
  *
  * @FIF_PROBE_REQ: pass probe request frames
+ *
+ * @FIF_MCAST_ACTION: pass multicast Action frames
  */
 enum ieee80211_filter_flags {
 	FIF_ALLMULTI		= 1<<1,
@@ -3185,6 +3149,7 @@ enum ieee80211_filter_flags {
 	FIF_OTHER_BSS		= 1<<6,
 	FIF_PSPOLL		= 1<<7,
 	FIF_PROBE_REQ		= 1<<8,
+	FIF_MCAST_ACTION	= 1<<9,
 };
 
 /**
@@ -4685,25 +4650,6 @@ void ieee80211_tx_rate_update(struct ieee80211_hw *hw,
 void ieee80211_tx_status(struct ieee80211_hw *hw,
 			 struct sk_buff *skb);
 
-#ifdef CPTCFG_MAC80211_LATENCY_MEASUREMENTS
-/**
- * ieee80211_tx_lat_thrshld_cfg - tx latency threshold configure
- *
- * Call this function on time for configuring the latency threshold on
- * tx packets for triggering the dbg data collection as part of the WRT
- * mechanism.
- *
- * @hw: the hardware the fw was uploaded with.
- * @thrshld: the threshold for the latency of tx packets.
- * @tid: the tid that the lateny was collectd on.
- * @window: window before collecting the data.
- * @mode: Internal buffer or continuos recording (recording with MIPI)
- * @iface: the interface we are checking on.
- */
-void ieee80211_tx_lat_thrshld_cfg(struct ieee80211_hw *hw,  u32 thrshld,
-				  u16 tid, u16 window, u16 mode, u32 iface);
-#endif /* CPTCFG_MAC80211_LATENCY_MEASUREMENTS */
-
 /**
  * ieee80211_tx_status_ext - extended transmit status callback
  *
@@ -5877,6 +5823,17 @@ void ieee80211_beacon_loss(struct ieee80211_vif *vif);
  * without connection recovery attempts.
  */
 void ieee80211_connection_loss(struct ieee80211_vif *vif);
+
+/**
+ * ieee80211_disconnect - request disconnection
+ *
+ * @vif: &struct ieee80211_vif pointer from the add_interface callback.
+ * @reconnect: immediate reconnect is desired
+ *
+ * Request disconnection from the current network and, if enabled, send a
+ * hint to the higher layers that immediate reconnect is desired.
+ */
+void ieee80211_disconnect(struct ieee80211_vif *vif, bool reconnect);
 
 /**
  * ieee80211_resume_disconnect - disconnect from AP after resume

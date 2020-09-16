@@ -173,9 +173,23 @@ static const struct ieee80211_regdomain hwsim_world_regdom_custom_02 = {
 	}
 };
 
+static const struct ieee80211_regdomain hwsim_world_regdom_custom_03 = {
+	.n_reg_rules = 6,
+	.alpha2 =  "99",
+	.reg_rules = {
+		REG_RULE(2412 - 10, 2462 + 10, 40, 0, 20, 0),
+		REG_RULE(2484 - 10, 2484 + 10, 40, 0, 20, 0),
+		REG_RULE(5150 - 10, 5240 + 10, 40, 0, 30, 0),
+		REG_RULE(5745 - 10, 5825 + 10, 40, 0, 30, 0),
+		REG_RULE(5855 - 10, 5925 + 10, 40, 0, 33, 0),
+		REG_RULE(5955 - 10, 7125 + 10, 160, 0, 33, 0),
+	}
+};
+
 static const struct ieee80211_regdomain *hwsim_world_regdom_custom[] = {
 	&hwsim_world_regdom_custom_01,
 	&hwsim_world_regdom_custom_02,
+	&hwsim_world_regdom_custom_03,
 };
 
 struct hwsim_vif_priv {
@@ -1930,6 +1944,8 @@ static void mac80211_hwsim_configure_filter(struct ieee80211_hw *hw,
 	data->rx_filter = 0;
 	if (*total_flags & FIF_ALLMULTI)
 		data->rx_filter |= FIF_ALLMULTI;
+	if (*total_flags & FIF_MCAST_ACTION)
+		data->rx_filter |= FIF_MCAST_ACTION;
 
 	*total_flags = data->rx_filter;
 }
@@ -2879,7 +2895,7 @@ static const struct ieee80211_sband_iftype_data he_capa_5ghz[] = {
 			},
 		},
 		/* ignored on 5 GHz, so add it here for 6 GHz */
-		.he_6ghz_capa =
+		.he_6ghz_capa.capa =
 			cpu_to_le16((IEEE80211_HT_MPDU_DENSITY_NONE << 0) |
 				    (IEEE80211_VHT_MAX_AMPDU_1024K << 3) |
 				    (IEEE80211_VHT_CAP_MAX_MPDU_LENGTH_11454 << 6) |
@@ -2928,7 +2944,7 @@ static const struct ieee80211_sband_iftype_data he_capa_5ghz[] = {
 			},
 		},
 		/* ignored on 5 GHz, so add it here for 6 GHz */
-		.he_6ghz_capa =
+		.he_6ghz_capa.capa =
 			cpu_to_le16((IEEE80211_HT_MPDU_DENSITY_NONE << 0) |
 				    (IEEE80211_VHT_MAX_AMPDU_1024K << 3) |
 				    (IEEE80211_VHT_CAP_MAX_MPDU_LENGTH_11454 << 6) |
@@ -3177,6 +3193,7 @@ static int mac80211_hwsim_new_radio(struct genl_info *info,
 	hw->wiphy->flags |= WIPHY_FLAG_SUPPORTS_TDLS |
 			    WIPHY_FLAG_HAS_REMAIN_ON_CHANNEL |
 			    WIPHY_FLAG_AP_UAPSD |
+			    WIPHY_FLAG_SUPPORTS_5_10_MHZ |
 			    WIPHY_FLAG_HAS_CHANNEL_SWITCH;
 	hw->wiphy->features |= NL80211_FEATURE_ACTIVE_MONITOR |
 			       NL80211_FEATURE_AP_MODE_CHAN_WIDTH_CHANGE |
@@ -3185,6 +3202,10 @@ static int mac80211_hwsim_new_radio(struct genl_info *info,
 			       NL80211_FEATURE_SCAN_RANDOM_MAC_ADDR;
 	wiphy_ext_feature_set(hw->wiphy, NL80211_EXT_FEATURE_VHT_IBSS);
 	wiphy_ext_feature_set(hw->wiphy, NL80211_EXT_FEATURE_BEACON_PROTECTION);
+	wiphy_ext_feature_set(hw->wiphy,
+			      NL80211_EXT_FEATURE_MULTICAST_REGISTRATIONS);
+	wiphy_ext_feature_set(hw->wiphy,
+			      NL80211_EXT_FEATURE_BEACON_RATE_LEGACY);
 
 	hw->wiphy->interface_modes = param->iftypes;
 
