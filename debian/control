@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: You-Sheng Yang <vicamo@gmail.com>
 Rules-Requires-Root: no
 Build-Depends:
- debhelper-compat (= 12),
+ debhelper-compat (= 13),
  dh-modaliases,
  dkms,
  quilt,
