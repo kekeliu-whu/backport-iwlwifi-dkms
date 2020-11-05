@@ -1,3 +1,13 @@
+backport-iwlwifi-dkms (8794-1) UNRELEASED; urgency=low
+
+  * New release
+    - upstream version 8794 commit 29db75ba9f27b7.
+
+  * debian/patches:
+    - update patches due to ws changes
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Thu, 05 Nov 2020 18:08:16 +0800
+
 backport-iwlwifi-dkms (8780-1) UNRELEASED; urgency=low
 
   * New release
