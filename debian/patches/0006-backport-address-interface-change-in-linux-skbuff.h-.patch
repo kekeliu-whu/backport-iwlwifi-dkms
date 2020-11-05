@@ -46,18 +46,18 @@ index 7a2ccdbae..f9d8f5f22 100644
 --- a/include/net/fq_impl.h
 +++ b/include/net/fq_impl.h
 @@ -112,7 +112,14 @@ static u32 fq_flow_idx(struct fq *fq, struct sk_buff *skb)
-     LINUX_VERSION_IN_RANGE(4,19,83, 4,20,0) || \
-     LINUX_VERSION_IN_RANGE(4,14,153, 4,15,0) || \
-     LINUX_VERSION_IN_RANGE(4,9,200, 4,10,0) || \
--    LINUX_VERSION_IN_RANGE(4,4,200, 4,5,0)
-+    LINUX_VERSION_IN_RANGE(4,4,200, 4,5,0) || \
-+    (UTS_UBUNTU_RELEASE_ABI && \
-+     (((LINUX_VERSION_CODE == KERNEL_VERSION(5,0,21)) && \
-+       (((UTS_UBUNTU_RELEASE_ABI >= 38) && (UTS_UBUNTU_RELEASE_ABI < 1000)) || \
-+        (UTS_UBUNTU_RELEASE_ABI >= 1032))) || \
-+      ((LINUX_VERSION_CODE == KERNEL_VERSION(4,15,18)) && \
-+       (((UTS_UBUNTU_RELEASE_ABI >= 73) && (UTS_UBUNTU_RELEASE_ABI < 1000)) || \
-+        (UTS_UBUNTU_RELEASE_ABI >= 1066)))))
+       LINUX_VERSION_IN_RANGE(4,19,83, 4,20,0) || \
+       LINUX_VERSION_IN_RANGE(4,14,153, 4,15,0) || \
+       LINUX_VERSION_IN_RANGE(4,9,200, 4,10,0) || \
+-      LINUX_VERSION_IN_RANGE(4,4,200, 4,5,0)
++      LINUX_VERSION_IN_RANGE(4,4,200, 4,5,0) || \
++      (UTS_UBUNTU_RELEASE_ABI && \
++       (((LINUX_VERSION_CODE == KERNEL_VERSION(5,0,21)) && \
++         (((UTS_UBUNTU_RELEASE_ABI >= 38) && (UTS_UBUNTU_RELEASE_ABI < 1000)) || \
++          (UTS_UBUNTU_RELEASE_ABI >= 1032))) || \
++        ((LINUX_VERSION_CODE == KERNEL_VERSION(4,15,18)) && \
++         (((UTS_UBUNTU_RELEASE_ABI >= 73) && (UTS_UBUNTU_RELEASE_ABI < 1000)) || \
++          (UTS_UBUNTU_RELEASE_ABI >= 1066)))))
  	u32 hash = skb_get_hash_perturb(skb, &fq->perturbation);
  #else
  	u32 hash = skb_get_hash_perturb(skb, fq->perturbation);
