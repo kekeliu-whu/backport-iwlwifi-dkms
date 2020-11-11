@@ -369,7 +369,6 @@ enum ieee80211_bss_change {
  * @BA_FRAME_TIMEOUT: Frames were released from the reordering buffer because
  *	they timed out. This won't be called for each frame released, but only
  *	once each time the timeout triggers.
- * @TX_LATENCY_EVENT: A Tx packet latency crossed the configured threshold
  */
 enum ieee80211_event_type {
 	RSSI_EVENT,
@@ -452,7 +451,6 @@ struct ieee80211_ba_event {
  * @rssi: relevant if &type is %RSSI_EVENT
  * @mlme: relevant if &type is %AUTH_EVENT
  * @ba: relevant if &type is %BAR_RX_EVENT or %BA_FRAME_TIMEOUT
- * @tx_lat: relevant if &type is %TX_LATENCY_EVENT
  * @u:union holding the fields above
  */
 struct ieee80211_event {
@@ -827,6 +825,8 @@ enum mac80211_tx_info_flags {
  * @IEEE80211_TX_CTRL_SKIP_MPATH_LOOKUP: This frame skips mesh path lookup
  * @IEEE80211_TX_CTRL_HW_80211_ENCAP: This frame uses hardware encapsulation
  *	(header conversion)
+ * @IEEE80211_TX_CTRL_NO_SEQNO: Do not overwrite the sequence number that
+ *	has already been assigned to this frame.
  *
  * These flags are used in tx_info->control.flags.
  */
@@ -838,6 +838,7 @@ enum mac80211_tx_control_flags {
 	IEEE80211_TX_CTRL_FAST_XMIT		= BIT(4),
 	IEEE80211_TX_CTRL_SKIP_MPATH_LOOKUP	= BIT(5),
 	IEEE80211_TX_CTRL_HW_80211_ENCAP	= BIT(6),
+	IEEE80211_TX_CTRL_NO_SEQNO		= BIT(7),
 };
 
 /*
@@ -1625,9 +1626,6 @@ enum ieee80211_vif_flags {
  *	these need to be set (or cleared) when the interface is added
  *	or, if supported by the driver, the interface type is changed
  *	at runtime, mac80211 will never touch this field
- * @filter_gratuitous_arp_unscol_na: User space configuration if to filter
- *	gratuitous arp & unsolicited na packets
- * @filter_gtk: User space configuration if to filter gtk packets
  * @hw_queue: hardware queue for each AC
  * @cab_queue: content-after-beacon (DTIM beacon really) queue, AP mode only
  * @chanctx_conf: The channel context this interface is assigned to, or %NULL
@@ -2387,27 +2385,6 @@ enum ieee80211_hw_flags {
 	NUM_IEEE80211_HW_FLAGS
 };
 
-/*
- * struct ieee80211_tx_thrshld_md - tx packet metadata that crosses a thrshld
- *
- * @mode: recording mode (Internal buffer or continues recording)
- * @monitor_collec_wind: the size of the window to collect the logs
- * @seq: packet sequence
- * @pkt_start: start time of triggering pkt
- * @pkt_end: end time of triggering pkt
- * @msrmnt: the tx latency of the pkt
- * @tid: tid of the pkt
- */
-struct ieee80211_tx_thrshld_md {
-	u8 mode;
-	u16 monitor_collec_wind;
-	u16 seq;
-	u32 pkt_start;
-	u32 pkt_end;
-	u32 msrmnt;
-	u16 tid;
-};
-
 /**
  * struct ieee80211_hw - hardware information and state
  *
@@ -2753,7 +2730,7 @@ void ieee80211_free_txskb(struct ieee80211_hw *hw, struct sk_buff *skb);
  * for devices that support offload of data packets (e.g. ARP responses).
  *
  * Mac80211 drivers should set the @NL80211_EXT_FEATURE_CAN_REPLACE_PTK0 flag
- * when they are able to replace in-use PTK keys according to to following
+ * when they are able to replace in-use PTK keys according to the following
  * requirements:
  * 1) They do not hand over frames decrypted with the old key to
       mac80211 once the call to set_key() with command %DISABLE_KEY has been
@@ -4384,6 +4361,31 @@ void ieee80211_free_hw(struct ieee80211_hw *hw);
 void ieee80211_restart_hw(struct ieee80211_hw *hw);
 
 /**
+ * ieee80211_rx_list - receive frame and store processed skbs in a list
+ *
+ * Use this function to hand received frames to mac80211. The receive
+ * buffer in @skb must start with an IEEE 802.11 header. In case of a
+ * paged @skb is used, the driver is recommended to put the ieee80211
+ * header of the frame on the linear part of the @skb to avoid memory
+ * allocation and/or memcpy by the stack.
+ *
+ * This function may not be called in IRQ context. Calls to this function
+ * for a single hardware must be synchronized against each other. Calls to
+ * this function, ieee80211_rx_ni() and ieee80211_rx_irqsafe() may not be
+ * mixed for a single hardware. Must not run concurrently with
+ * ieee80211_tx_status() or ieee80211_tx_status_ni().
+ *
+ * This function must be called with BHs disabled and RCU read lock
+ *
+ * @hw: the hardware this frame came in on
+ * @sta: the station the frame was received from, or %NULL
+ * @skb: the buffer to receive, owned by mac80211 after this call
+ * @list: the destination list
+ */
+void ieee80211_rx_list(struct ieee80211_hw *hw, struct ieee80211_sta *sta,
+		       struct sk_buff *skb, struct list_head *list);
+
+/**
  * ieee80211_rx_napi - receive frame from NAPI context
  *
  * Use this function to hand received frames to mac80211. The receive
@@ -4735,7 +4737,7 @@ void ieee80211_tx_status_irqsafe(struct ieee80211_hw *hw,
  *
  * Call this function for all transmitted data frames after their transmit
  * completion. This callback should only be called for data frames which
- * are are using driver's (or hardware's) offload capability of encap/decap
+ * are using driver's (or hardware's) offload capability of encap/decap
  * 802.11 frames.
  *
  * This function may not be called in IRQ context. Calls to this function
@@ -6293,6 +6295,14 @@ bool ieee80211_tx_prepare_skb(struct ieee80211_hw *hw,
 			      int band, struct ieee80211_sta **sta);
 
 /**
+ * Sanity-check and parse the radiotap header of injected frames
+ * @skb: packet injected by userspace
+ * @dev: the &struct device of this 802.11 device
+ */
+bool ieee80211_parse_tx_radiotap(struct sk_buff *skb,
+				 struct net_device *dev);
+
+/**
  * struct ieee80211_noa_data - holds temporary data for tracking P2P NoA state
  *
  * @next_tsf: TSF timestamp of the next absent state change
@@ -6401,7 +6411,7 @@ void ieee80211_unreserve_tid(struct ieee80211_sta *sta, u8 tid);
  *
  * Note that this must be called in an rcu_read_lock() critical section,
  * which can only be released after the SKB was handled. Some pointers in
- * skb->cb, e.g. the key pointer, are protected by by RCU and thus the
+ * skb->cb, e.g. the key pointer, are protected by RCU and thus the
  * critical section must persist not just for the duration of this call
  * but for the duration of the frame handling.
  * However, also note that while in the wake_tx_queue() method,
