@@ -1,3 +1,18 @@
+backport-iwlwifi-dkms (8324-0ubuntu3~20.04.2) focal; urgency=medium
+
+  * Fix build against v5.8 kernel (LP: #1884634)
+    - backport: add genlmsg_parse()
+    - backport: update include/uapi/linux/pci_regs.h
+    - [NOUPSTREAM] iwlwifi: mvm: use 64-bit version of timespec
+    - [NOUPSTREAM] cfg80211: use parallel_ops for genl
+    - backports: netlink: fix nla_validate_nested()
+    - netlink: rename nl80211_validate_nested() to nla_validate_nested()
+    - ftrace: Rework event_create_dir()
+    - nl80211: fix NL80211_ATTR_FTM_RESPONDER policy
+    - [NOUPSTREAM] nl80211: pull in NLA_POLICY_EXACT_LEN_WARN() usage
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Mon, 02 Nov 2020 13:55:31 +0000
+
 backport-iwlwifi-dkms (8324-0ubuntu3~20.04.1) focal; urgency=medium
 
   * dkms: stop installing kernel on 5.4 or newer (LP: #1863583)

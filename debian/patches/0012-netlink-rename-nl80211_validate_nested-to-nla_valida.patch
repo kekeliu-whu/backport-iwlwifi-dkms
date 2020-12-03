@@ -1,0 +1,34 @@
+From: Michal Kubecek <mkubecek@suse.cz>
+Date: Wed, 11 Dec 2019 10:58:19 +0100
+Subject: netlink: rename nl80211_validate_nested() to nla_validate_nested()
+
+Function nl80211_validate_nested() is not specific to nl80211, it's
+a counterpart to nla_validate_nested_deprecated() with strict validation.
+For consistency with other validation and parse functions, rename it to
+nla_validate_nested().
+
+Signed-off-by: Michal Kubecek <mkubecek@suse.cz>
+Acked-by: Jiri Pirko <jiri@mellanox.com>
+Reviewed-by: Johannes Berg <johannes@sipsolutions.net>
+Signed-off-by: David S. Miller <davem@davemloft.net>
+(backported from commit 32d5109a9d864aea3981f0b5ea736eee4e11b42a
+https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git)
+Signed-off-by: You-Sheng Yang <vicamo.yang@canonical.com>
+---
+ net/wireless/nl80211.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/net/wireless/nl80211.c b/net/wireless/nl80211.c
+index d8480b6..702a269 100644
+--- a/net/wireless/nl80211.c
++++ b/net/wireless/nl80211.c
+@@ -13088,8 +13088,7 @@ static int nl80211_vendor_check_policy(const struct wiphy_vendor_command *vcmd,
+ 		return -EINVAL;
+ 	}
+ 
+-	return nl80211_validate_nested(attr, vcmd->maxattr, vcmd->policy,
+-				       extack);
++	return nla_validate_nested(attr, vcmd->maxattr, vcmd->policy, extack);
+ }
+ 
+ static int nl80211_vendor_cmd(struct sk_buff *skb, struct genl_info *info)
