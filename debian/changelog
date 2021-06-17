@@ -1,4 +1,4 @@
-backport-iwlwifi-dkms (9257-0ubuntu1) hirsute; urgency=low
+backport-iwlwifi-dkms (9257-0ubuntu1) impish; urgency=low
 
   * New release
     - upstream version 9257 commit ad088b602027b9.
