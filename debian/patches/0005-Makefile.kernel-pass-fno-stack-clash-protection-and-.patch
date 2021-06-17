@@ -20,6 +20,6 @@ index 3274949..4ee9f2f 100644
 +KBUILD_CFLAGS += $(call cc-option,-fcf-protection=none)
 +endif
 +
- NOSTDINC_FLAGS := \
+ NOSTDINC_FLAGS += \
  	-I$(M)/backport-include/ \
  	-I$(M)/backport-include/uapi \
