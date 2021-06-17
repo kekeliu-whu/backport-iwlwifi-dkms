@@ -13,6 +13,7 @@ mac80211-y := \
 	ht.o agg-tx.o agg-rx.o \
 	vht.o \
 	he.o \
+	s1g.o \
 	ibss.o \
 	iface.o \
 	rate.o \
@@ -56,11 +57,9 @@ CFLAGS_trace.o := -I$(src)
 subdir-ccflags-y += $(call cc-option,-Wimplicit-fallthrough)
 
 rc80211_minstrel-y := \
-	rc80211_minstrel.o \
 	rc80211_minstrel_ht.o
 
 rc80211_minstrel-$(CPTCFG_MAC80211_DEBUGFS) += \
-	rc80211_minstrel_debugfs.o \
 	rc80211_minstrel_ht_debugfs.o
 
 mac80211-$(CPTCFG_MAC80211_RC_MINSTREL) += $(rc80211_minstrel-y)

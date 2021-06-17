@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2005-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2005-2014, 2018-2021 Intel Corporation
  * Copyright (C) 2015-2017 Intel Deutschland GmbH
  */
 #include <linux/module.h>
@@ -209,6 +209,7 @@ static struct iwl_op_mode *iwl_xvt_start(struct iwl_trans *trans,
 	trans_cfg.bc_table_dword =
 		trans->trans_cfg->device_family < IWL_DEVICE_FAMILY_AX210;
 	trans_cfg.scd_set_active = true;
+	trans->wide_cmd_header = true;
 
 	switch (iwlwifi_mod_params.amsdu_size) {
 	case IWL_AMSDU_DEF:
@@ -427,15 +428,17 @@ static void iwl_xvt_txpath_flush(struct iwl_xvt *xvt,
 		if (tid == IWL_MGMT_TID)
 			tid = IWL_MAX_TID_COUNT;
 
-		tx_data = iwl_xvt_rx_get_tx_meta_data(xvt, queue_num);
-		if (!tx_data)
-			continue;
-
 		IWL_DEBUG_TX_QUEUES(xvt,
 				    "tid %d queue_id %d read-before %d read-after %d\n",
 				    tid, queue_num, read_before, read_after);
+		if (read_before != read_after &&
+		    xvt->queue_data[queue_num].txq_full != 1) {
+			tx_data = iwl_xvt_rx_get_tx_meta_data(xvt, queue_num);
+			if (!tx_data)
+				continue;
 
-		iwl_xvt_reclaim_and_free(xvt, tx_data, queue_num, read_after);
+			iwl_xvt_reclaim_and_free(xvt, tx_data, queue_num, read_after);
+		}
 	}
 }
 
@@ -552,20 +555,20 @@ static void iwl_xvt_rx_dispatch(struct iwl_op_mode *op_mode,
 	iwl_notification_wait_notify(&xvt->notif_wait, pkt);
 	IWL_DEBUG_INFO(xvt, "rx dispatch got notification\n");
 
-	switch (pkt->hdr.cmd) {
-	case TX_CMD:
+	switch (WIDE_ID(pkt->hdr.group_id, pkt->hdr.cmd)) {
+	case WIDE_ID(LEGACY_GROUP, TX_CMD):
 		iwl_xvt_rx_tx_cmd_handler(xvt, pkt);
 		break;
-	case BA_NOTIF:
+	case WIDE_ID(LEGACY_GROUP, BA_NOTIF):
 		iwl_xvt_rx_ba_notif(xvt, pkt);
 		break;
-	case REPLY_RX_MPDU_CMD:
+	case WIDE_ID(LEGACY_GROUP, REPLY_RX_MPDU_CMD):
 		iwl_xvt_reorder(xvt, pkt);
 		break;
-	case TXPATH_FLUSH:
+	case WIDE_ID(LONG_GROUP, TXPATH_FLUSH):
 		iwl_xvt_txpath_flush(xvt, pkt);
 		break;
-	case FRAME_RELEASE:
+	case WIDE_ID(LEGACY_GROUP, FRAME_RELEASE):
 		iwl_xvt_rx_frame_release(xvt, pkt);
 	}
 
@@ -635,7 +638,7 @@ static void iwl_xvt_nic_config(struct iwl_op_mode *op_mode)
 				       ~APMG_PS_CTRL_EARLY_PWR_OFF_RESET_DIS);
 }
 
-static void iwl_xvt_nic_error(struct iwl_op_mode *op_mode)
+static void iwl_xvt_nic_error(struct iwl_op_mode *op_mode, bool sync)
 {
 	struct iwl_xvt *xvt = IWL_OP_MODE_GET_XVT(op_mode);
 	void *p_table;
@@ -684,7 +687,7 @@ static void iwl_xvt_nic_error(struct iwl_op_mode *op_mode)
 		kfree(p_table_umac);
 	}
 
-	iwl_fw_error_collect(&xvt->fwrt);
+	iwl_fw_error_collect(&xvt->fwrt, sync);
 }
 
 static bool iwl_xvt_set_hw_rfkill_state(struct iwl_op_mode *op_mode, bool state)
@@ -748,6 +751,15 @@ static void iwl_xvt_wake_sw_queue(struct iwl_op_mode *op_mode, int queue)
 	}
 }
 
+static void iwl_xvt_time_point(struct iwl_op_mode *op_mode,
+			       enum iwl_fw_ini_time_point tp_id,
+			       union iwl_dbg_tlv_tp_data *tp_data)
+{
+	struct iwl_xvt *xvt = IWL_OP_MODE_GET_XVT(op_mode);
+
+	iwl_dbg_tlv_time_point(&xvt->fwrt, tp_id, tp_data);
+}
+
 static const struct iwl_op_mode_ops iwl_xvt_ops = {
 	.start = iwl_xvt_start,
 	.stop = iwl_xvt_stop,
@@ -758,6 +770,7 @@ static const struct iwl_op_mode_ops iwl_xvt_ops = {
 	.free_skb = iwl_xvt_free_skb,
 	.queue_full = iwl_xvt_stop_sw_queue,
 	.queue_not_full = iwl_xvt_wake_sw_queue,
+	.time_point = iwl_xvt_time_point,
 	.test_ops = {
 		.send_hcmd = iwl_xvt_tm_send_hcmd,
 		.cmd_exec = iwl_xvt_user_cmd_execute,
@@ -884,23 +897,23 @@ int iwl_xvt_sar_select_profile(struct iwl_xvt *xvt, int prof_a, int prof_b)
 	} else if (fw_has_api(&xvt->fw->ucode_capa,
 			      IWL_UCODE_TLV_API_REDUCE_TX_POWER)) {
 		len = sizeof(cmd.v5);
-		n_subbands = IWL_NUM_SUB_BANDS;
+		n_subbands = IWL_NUM_SUB_BANDS_V1;
 		per_chain = cmd.v5.per_chain[0][0];
 	} else if (fw_has_capa(&xvt->fw->ucode_capa,
 			       IWL_UCODE_TLV_CAPA_TX_POWER_ACK)) {
 		len = sizeof(cmd.v4);
-		n_subbands = IWL_NUM_SUB_BANDS;
+		n_subbands = IWL_NUM_SUB_BANDS_V1;
 		per_chain = cmd.v4.per_chain[0][0];
 	} else {
 		len = sizeof(cmd.v3);
-		n_subbands = IWL_NUM_SUB_BANDS;
+		n_subbands = IWL_NUM_SUB_BANDS_V1;
 		per_chain = cmd.v3.per_chain[0][0];
 	}
 
 	/* all structs have the same common part, add it */
 	len += sizeof(cmd.common);
 
-	if (iwl_sar_select_profile(&xvt->fwrt, per_chain, ACPI_SAR_NUM_TABLES,
+	if (iwl_sar_select_profile(&xvt->fwrt, per_chain, IWL_NUM_CHAIN_TABLES,
 				   n_subbands, prof_a, prof_b))
 		return -ENOENT;
 
