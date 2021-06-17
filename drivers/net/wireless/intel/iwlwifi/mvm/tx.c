@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2012-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2012-2014, 2018-2021 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -265,20 +265,24 @@ static u32 iwl_mvm_get_tx_rate(struct iwl_mvm *mvm,
 			       struct ieee80211_tx_info *info,
 			       struct ieee80211_sta *sta, __le16 fc)
 {
-	int rate_idx;
+	int rate_idx = -1;
 	u8 rate_plcp;
 	u32 rate_flags = 0;
 	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
 
-	/* HT rate doesn't make sense for a non data frame */
-	WARN_ONCE(info->control.rates[0].flags & IEEE80211_TX_RC_MCS &&
-		  !ieee80211_is_data(fc),
-		  "Got a HT rate (flags:0x%x/mcs:%d/fc:0x%x/state:%d) for a non data frame\n",
-		  info->control.rates[0].flags,
-		  info->control.rates[0].idx,
-		  le16_to_cpu(fc), mvmsta->sta_state);
+	/* info->control is only relevant for non HW rate control */
+	if (!ieee80211_hw_check(mvm->hw, HAS_RATE_CONTROL)) {
+		/* HT rate doesn't make sense for a non data frame */
+		WARN_ONCE(info->control.rates[0].flags & IEEE80211_TX_RC_MCS &&
+			  !ieee80211_is_data(fc),
+			  "Got a HT rate (flags:0x%x/mcs:%d/fc:0x%x/state:%d) for a non data frame\n",
+			  info->control.rates[0].flags,
+			  info->control.rates[0].idx,
+			  le16_to_cpu(fc), mvmsta->sta_state);
 
-	rate_idx = info->control.rates[0].idx;
+		rate_idx = info->control.rates[0].idx;
+	}
+
 	/* if the rate isn't a well known legacy rate, take the lowest one */
 	if (rate_idx < 0 || rate_idx >= IWL_RATE_COUNT_LEGACY)
 		rate_idx = rate_lowest_index(
@@ -412,7 +416,7 @@ static void iwl_mvm_set_tx_cmd_crypto(struct iwl_mvm *mvm,
 
 	case WLAN_CIPHER_SUITE_WEP104:
 		tx_cmd->sec_ctl |= TX_CMD_SEC_KEY128;
-		/* fall through */
+		fallthrough;
 	case WLAN_CIPHER_SUITE_WEP40:
 		tx_cmd->sec_ctl |= TX_CMD_SEC_WEP |
 			((keyconf->keyidx << TX_CMD_SEC_WEP_KEY_IDX_POS) &
@@ -423,7 +427,7 @@ static void iwl_mvm_set_tx_cmd_crypto(struct iwl_mvm *mvm,
 	case WLAN_CIPHER_SUITE_GCMP:
 	case WLAN_CIPHER_SUITE_GCMP_256:
 		type = TX_CMD_SEC_GCMP;
-		/* Fall through */
+		fallthrough;
 	case WLAN_CIPHER_SUITE_CCMP_256:
 		/* TODO: Taking the key from the table might introduce a race
 		 * when PTK rekeying is done, having an old packets with a PN
@@ -786,6 +790,7 @@ iwl_mvm_tx_tso_segment(struct sk_buff *skb, unsigned int num_subframes,
 
 	next = skb_gso_segment(skb, netdev_flags);
 	skb_shinfo(skb)->gso_size = mss;
+	skb_shinfo(skb)->gso_type = ipv4 ? SKB_GSO_TCPV4 : SKB_GSO_TCPV6;
 	if (WARN_ON_ONCE(IS_ERR(next)))
 		return -EINVAL;
 	else if (next)
@@ -808,6 +813,8 @@ iwl_mvm_tx_tso_segment(struct sk_buff *skb, unsigned int num_subframes,
 
 		if (tcp_payload_len > mss) {
 			skb_shinfo(tmp)->gso_size = mss;
+			skb_shinfo(tmp)->gso_type = ipv4 ? SKB_GSO_TCPV4 :
+							   SKB_GSO_TCPV6;
 		} else {
 			if (qos) {
 				u8 *qc;
@@ -1120,6 +1127,11 @@ static int iwl_mvm_tx_mpdu(struct iwl_mvm *mvm, struct sk_buff *skb,
 	/* From now on, we cannot access info->control */
 	iwl_mvm_skb_prepare_status(skb, dev_cmd);
 
+	if (ieee80211_is_data(fc))
+		iwl_mvm_mei_tx_copy_to_csme(mvm, skb,
+					    info->control.hw_key ?
+					    info->control.hw_key->iv_len : 0);
+
 	if (iwl_trans_tx(mvm->trans, skb, dev_cmd, txq_id))
 		goto drop_unlock_sta;
 
@@ -1320,7 +1332,7 @@ void iwl_mvm_hwrate_to_tx_rate(u32 rate_n_flags,
 	}
 }
 
-/**
+/*
  * translate ucode response to mac80211 tx status control values
  */
 static void iwl_mvm_hwrate_to_tx_status(u32 rate_n_flags,
@@ -1334,11 +1346,23 @@ static void iwl_mvm_hwrate_to_tx_status(u32 rate_n_flags,
 }
 
 static void iwl_mvm_tx_status_check_trigger(struct iwl_mvm *mvm,
-					    u32 status)
+					    u32 status, __le16 frame_control)
 {
 	struct iwl_fw_dbg_trigger_tlv *trig;
 	struct iwl_fw_dbg_trigger_tx_status *status_trig;
 	int i;
+
+	if ((status & TX_STATUS_MSK) != TX_STATUS_SUCCESS) {
+		enum iwl_fw_ini_time_point tp =
+			IWL_FW_INI_TIME_POINT_TX_FAILED;
+
+		if (ieee80211_is_action(frame_control))
+			tp = IWL_FW_INI_TIME_POINT_TX_WFD_ACTION_FRAME_FAILED;
+
+		iwl_dbg_tlv_time_point(&mvm->fwrt,
+				       tp, NULL);
+		return;
+	}
 
 	trig = iwl_fw_dbg_trigger_on(&mvm->fwrt, NULL,
 				     FW_DBG_TRIGGER_TX_STATUS);
@@ -1362,7 +1386,7 @@ static void iwl_mvm_tx_status_check_trigger(struct iwl_mvm *mvm,
 	}
 }
 
-/**
+/*
  * iwl_mvm_get_scd_ssn - returns the SSN of the SCD
  * @tx_resp: the Tx response from the fw (agg or non-agg)
  *
@@ -1457,7 +1481,7 @@ static void iwl_mvm_rx_tx_cmd_single(struct iwl_mvm *mvm,
 		if (skb_freed > 1)
 			info->flags |= IEEE80211_TX_STAT_ACK;
 
-		iwl_mvm_tx_status_check_trigger(mvm, status);
+		iwl_mvm_tx_status_check_trigger(mvm, status, hdr->frame_control);
 
 		info->status.rates[0].count = tx_resp->failure_frame + 1;
 		iwl_mvm_hwrate_to_tx_status(le32_to_cpu(tx_resp->initial_rate),
@@ -1648,10 +1672,13 @@ static void iwl_mvm_rx_tx_cmd_agg_dbg(struct iwl_mvm *mvm,
 	struct agg_tx_status *frame_status =
 		iwl_mvm_get_agg_status(mvm, tx_resp);
 	int i;
+	bool tirgger_timepoint = false;
 
 	for (i = 0; i < tx_resp->frame_count; i++) {
 		u16 fstatus = le16_to_cpu(frame_status[i].status);
-
+		/* In case one frame wasn't transmitted trigger time point */
+		tirgger_timepoint |= ((fstatus & AGG_TX_STATE_STATUS_MSK) !=
+				      AGG_TX_STATE_TRANSMITTED);
 		IWL_DEBUG_TX_REPLY(mvm,
 				   "status %s (0x%04x), try-count (%d) seq (0x%x)\n",
 				   iwl_get_agg_tx_status(fstatus),
@@ -1660,6 +1687,11 @@ static void iwl_mvm_rx_tx_cmd_agg_dbg(struct iwl_mvm *mvm,
 					AGG_TX_STATE_TRY_CNT_POS,
 				   le16_to_cpu(frame_status[i].sequence));
 	}
+
+	if (tirgger_timepoint)
+		iwl_dbg_tlv_time_point(&mvm->fwrt,
+				       IWL_FW_INI_TIME_POINT_TX_FAILED, NULL);
+
 }
 #else
 static void iwl_mvm_rx_tx_cmd_agg_dbg(struct iwl_mvm *mvm,

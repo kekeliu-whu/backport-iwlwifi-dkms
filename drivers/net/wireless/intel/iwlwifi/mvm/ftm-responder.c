@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
  * Copyright (C) 2015-2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2020 Intel Corporation
+ * Copyright (C) 2018-2021 Intel Corporation
  */
 #include <net/cfg80211.h>
 #include <linux/etherdevice.h>
@@ -75,6 +75,24 @@ static int iwl_mvm_ftm_responder_set_bw_v2(struct cfg80211_chan_def *chandef,
 	return 0;
 }
 
+static void
+iwl_mvm_ftm_responder_set_ndp(struct iwl_mvm *mvm,
+			      struct iwl_tof_responder_config_cmd_v9 *cmd)
+{
+	/* Up to 2 R2I STS are allowed on the responder */
+	u32 r2i_max_sts = IWL_MVM_FTM_R2I_MAX_STS < 2 ?
+		IWL_MVM_FTM_R2I_MAX_STS : 1;
+
+	cmd->r2i_ndp_params = IWL_MVM_FTM_R2I_MAX_REP |
+		(r2i_max_sts << IWL_RESPONDER_STS_POS) |
+		(IWL_MVM_FTM_R2I_MAX_TOTAL_LTF << IWL_RESPONDER_TOTAL_LTF_POS);
+	cmd->i2r_ndp_params = IWL_MVM_FTM_I2R_MAX_REP |
+		(IWL_MVM_FTM_I2R_MAX_STS << IWL_RESPONDER_STS_POS) |
+		(IWL_MVM_FTM_I2R_MAX_TOTAL_LTF << IWL_RESPONDER_TOTAL_LTF_POS);
+	cmd->cmd_valid_fields |=
+		cpu_to_le32(IWL_TOF_RESPONDER_CMD_VALID_NDP_PARAMS);
+}
+
 static int
 iwl_mvm_ftm_responder_cmd(struct iwl_mvm *mvm,
 			  struct ieee80211_vif *vif,
@@ -82,11 +100,11 @@ iwl_mvm_ftm_responder_cmd(struct iwl_mvm *mvm,
 {
 	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
 	/*
-	 * The command structure is the same for versions 6 and 7, (only the
+	 * The command structure is the same for versions 6, 7 and 8 (only the
 	 * field interpretation is different), so the same struct can be use
 	 * for all cases.
 	 */
-	struct iwl_tof_responder_config_cmd cmd = {
+	struct iwl_tof_responder_config_cmd_v9 cmd = {
 		.channel_num = chandef->chan->hw_value,
 		.cmd_valid_fields =
 			cpu_to_le32(IWL_TOF_RESPONDER_CMD_VALID_CHAN_INFO |
@@ -111,7 +129,22 @@ iwl_mvm_ftm_responder_cmd(struct iwl_mvm *mvm,
 	}
 #endif
 
-	if (cmd_ver == 7)
+	/* Use a default of bss_color=1 for now */
+	if (cmd_ver == 9) {
+		cmd.cmd_valid_fields |=
+			cpu_to_le32(IWL_TOF_RESPONDER_CMD_VALID_BSS_COLOR |
+				    IWL_TOF_RESPONDER_CMD_VALID_MIN_MAX_TIME_BETWEEN_MSR);
+		cmd.bss_color = 1;
+		cmd.min_time_between_msr =
+			cpu_to_le16(IWL_MVM_FTM_NON_TB_MIN_TIME_BETWEEN_MSR);
+		cmd.max_time_between_msr =
+			cpu_to_le16(IWL_MVM_FTM_NON_TB_MAX_TIME_BETWEEN_MSR);
+	}
+
+	if (cmd_ver >= 8)
+		iwl_mvm_ftm_responder_set_ndp(mvm, &cmd);
+
+	if (cmd_ver >= 7)
 		err = iwl_mvm_ftm_responder_set_bw_v2(chandef, &cmd.format_bw,
 						      &cmd.ctrl_ch_position);
 	else
