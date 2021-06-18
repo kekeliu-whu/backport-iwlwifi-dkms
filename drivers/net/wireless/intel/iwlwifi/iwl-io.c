@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2003-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2003-2014, 2018-2021 Intel Corporation
  * Copyright (C) 2015-2016 Intel Deutschland GmbH
  */
 #include <linux/delay.h>
@@ -50,13 +50,14 @@ IWL_EXPORT_SYMBOL(iwl_read32);
 int iwl_poll_bit(struct iwl_trans *trans, u32 addr,
 		 u32 bits, u32 mask, int timeout)
 {
-	unsigned long jiffies_timeout = jiffies + usecs_to_jiffies(timeout);
+	int t = 0;
 
 	do {
 		if ((iwl_read32(trans, addr) & mask) == (bits & mask))
-			return 0;
+			return t;
 		udelay(IWL_POLL_INTERVAL);
-	} while (!time_after(jiffies, jiffies_timeout));
+		t += IWL_POLL_INTERVAL;
+	} while (t < timeout);
 
 	return -ETIMEDOUT;
 }
@@ -65,10 +66,10 @@ IWL_EXPORT_SYMBOL(iwl_poll_bit);
 u32 iwl_read_direct32(struct iwl_trans *trans, u32 reg)
 {
 	u32 value = 0x5a5a5a5a;
-	unsigned long flags;
-	if (iwl_trans_grab_nic_access(trans, &flags)) {
+
+	if (iwl_trans_grab_nic_access(trans)) {
 		value = iwl_read32(trans, reg);
-		iwl_trans_release_nic_access(trans, &flags);
+		iwl_trans_release_nic_access(trans);
 	}
 
 	return value;
@@ -77,22 +78,18 @@ IWL_EXPORT_SYMBOL(iwl_read_direct32);
 
 void iwl_write_direct32(struct iwl_trans *trans, u32 reg, u32 value)
 {
-	unsigned long flags;
-
-	if (iwl_trans_grab_nic_access(trans, &flags)) {
+	if (iwl_trans_grab_nic_access(trans)) {
 		iwl_write32(trans, reg, value);
-		iwl_trans_release_nic_access(trans, &flags);
+		iwl_trans_release_nic_access(trans);
 	}
 }
 IWL_EXPORT_SYMBOL(iwl_write_direct32);
 
 void iwl_write_direct64(struct iwl_trans *trans, u64 reg, u64 value)
 {
-	unsigned long flags;
-
-	if (iwl_trans_grab_nic_access(trans, &flags)) {
+	if (iwl_trans_grab_nic_access(trans)) {
 		iwl_write64(trans, reg, value);
-		iwl_trans_release_nic_access(trans, &flags);
+		iwl_trans_release_nic_access(trans);
 	}
 }
 IWL_EXPORT_SYMBOL(iwl_write_direct64);
@@ -138,27 +135,25 @@ IWL_EXPORT_SYMBOL(iwl_write_prph64_no_grab);
 
 u32 iwl_read_prph(struct iwl_trans *trans, u32 ofs)
 {
-	unsigned long flags;
 	u32 val = 0x5a5a5a5a;
 
-	if (iwl_trans_grab_nic_access(trans, &flags)) {
+	if (iwl_trans_grab_nic_access(trans)) {
 		val = iwl_read_prph_no_grab(trans, ofs);
-		iwl_trans_release_nic_access(trans, &flags);
+		iwl_trans_release_nic_access(trans);
 	}
 	return val;
 }
 IWL_EXPORT_SYMBOL(iwl_read_prph);
 
-void iwl_write_prph(struct iwl_trans *trans, u32 ofs, u32 val)
+void iwl_write_prph_delay(struct iwl_trans *trans, u32 ofs, u32 val, u32 delay_ms)
 {
-	unsigned long flags;
-
-	if (iwl_trans_grab_nic_access(trans, &flags)) {
+	if (iwl_trans_grab_nic_access(trans)) {
+		mdelay(delay_ms);
 		iwl_write_prph_no_grab(trans, ofs, val);
-		iwl_trans_release_nic_access(trans, &flags);
+		iwl_trans_release_nic_access(trans);
 	}
 }
-IWL_EXPORT_SYMBOL(iwl_write_prph);
+IWL_EXPORT_SYMBOL(iwl_write_prph_delay);
 
 int iwl_poll_prph_bit(struct iwl_trans *trans, u32 addr,
 		      u32 bits, u32 mask, int timeout)
@@ -177,13 +172,11 @@ int iwl_poll_prph_bit(struct iwl_trans *trans, u32 addr,
 
 void iwl_set_bits_prph(struct iwl_trans *trans, u32 ofs, u32 mask)
 {
-	unsigned long flags;
-
-	if (iwl_trans_grab_nic_access(trans, &flags)) {
+	if (iwl_trans_grab_nic_access(trans)) {
 		iwl_write_prph_no_grab(trans, ofs,
 				       iwl_read_prph_no_grab(trans, ofs) |
 				       mask);
-		iwl_trans_release_nic_access(trans, &flags);
+		iwl_trans_release_nic_access(trans);
 	}
 }
 IWL_EXPORT_SYMBOL(iwl_set_bits_prph);
@@ -191,26 +184,23 @@ IWL_EXPORT_SYMBOL(iwl_set_bits_prph);
 void iwl_set_bits_mask_prph(struct iwl_trans *trans, u32 ofs,
 			    u32 bits, u32 mask)
 {
-	unsigned long flags;
-
-	if (iwl_trans_grab_nic_access(trans, &flags)) {
+	if (iwl_trans_grab_nic_access(trans)) {
 		iwl_write_prph_no_grab(trans, ofs,
 				       (iwl_read_prph_no_grab(trans, ofs) &
 					mask) | bits);
-		iwl_trans_release_nic_access(trans, &flags);
+		iwl_trans_release_nic_access(trans);
 	}
 }
 IWL_EXPORT_SYMBOL(iwl_set_bits_mask_prph);
 
 void iwl_clear_bits_prph(struct iwl_trans *trans, u32 ofs, u32 mask)
 {
-	unsigned long flags;
 	u32 val;
 
-	if (iwl_trans_grab_nic_access(trans, &flags)) {
+	if (iwl_trans_grab_nic_access(trans)) {
 		val = iwl_read_prph_no_grab(trans, ofs);
 		iwl_write_prph_no_grab(trans, ofs, (val & ~mask));
-		iwl_trans_release_nic_access(trans, &flags);
+		iwl_trans_release_nic_access(trans);
 	}
 }
 IWL_EXPORT_SYMBOL(iwl_clear_bits_prph);
@@ -218,14 +208,17 @@ IWL_EXPORT_SYMBOL(iwl_clear_bits_prph);
 void iwl_force_nmi(struct iwl_trans *trans)
 {
 	if (trans->trans_cfg->device_family < IWL_DEVICE_FAMILY_9000)
-		iwl_write_prph(trans, DEVICE_SET_NMI_REG,
-			       DEVICE_SET_NMI_VAL_DRV);
+		iwl_write_prph_delay(trans, DEVICE_SET_NMI_REG,
+				     DEVICE_SET_NMI_VAL_DRV, 1);
 	else if (trans->trans_cfg->device_family < IWL_DEVICE_FAMILY_AX210)
 		iwl_write_umac_prph(trans, UREG_NIC_SET_NMI_DRIVER,
 				UREG_NIC_SET_NMI_DRIVER_NMI_FROM_DRIVER);
-	else
+	else if (trans->trans_cfg->device_family < IWL_DEVICE_FAMILY_BZ)
 		iwl_write_umac_prph(trans, UREG_DOORBELL_TO_ISR6,
 				    UREG_DOORBELL_TO_ISR6_NMI_BIT);
+	else
+		iwl_write32(trans, CSR_DOORBELL_VECTOR,
+			    CSR_DOORBELL_VECTOR_NMI);
 }
 IWL_EXPORT_SYMBOL(iwl_force_nmi);
 
@@ -408,6 +401,7 @@ int iwl_dump_fh(struct iwl_trans *trans, char **buf)
 int iwl_finish_nic_init(struct iwl_trans *trans,
 			const struct iwl_cfg_trans_params *cfg_trans)
 {
+	u32 poll_ready;
 	int err;
 
 	if (cfg_trans->bisr_workaround) {
@@ -419,7 +413,16 @@ int iwl_finish_nic_init(struct iwl_trans *trans,
 	 * Set "initialization complete" bit to move adapter from
 	 * D0U* --> D0A* (powered-up active) state.
 	 */
-	iwl_set_bit(trans, CSR_GP_CNTRL, CSR_GP_CNTRL_REG_FLAG_INIT_DONE);
+	if (cfg_trans->device_family >= IWL_DEVICE_FAMILY_BZ) {
+		iwl_set_bit(trans, CSR_GP_CNTRL,
+			    CSR_GP_CNTRL_REG_FLAG_MAC_CLOCK_READY |
+			    CSR_GP_CNTRL_REG_FLAG_MAC_INIT);
+		poll_ready = CSR_GP_CNTRL_REG_FLAG_MAC_STATUS;
+	} else {
+		iwl_set_bit(trans, CSR_GP_CNTRL,
+			    CSR_GP_CNTRL_REG_FLAG_INIT_DONE);
+		poll_ready = CSR_GP_CNTRL_REG_FLAG_MAC_CLOCK_READY;
+	}
 
 	if (cfg_trans->device_family == IWL_DEVICE_FAMILY_8000)
 		udelay(2);
@@ -429,10 +432,7 @@ int iwl_finish_nic_init(struct iwl_trans *trans,
 	 * device-internal resources is supported, e.g. iwl_write_prph()
 	 * and accesses to uCode SRAM.
 	 */
-	err = iwl_poll_bit(trans, CSR_GP_CNTRL,
-			   CSR_GP_CNTRL_REG_FLAG_MAC_CLOCK_READY,
-			   CSR_GP_CNTRL_REG_FLAG_MAC_CLOCK_READY,
-			   25000);
+	err = iwl_poll_bit(trans, CSR_GP_CNTRL, poll_ready, poll_ready, 25000);
 	if (err < 0)
 		IWL_DEBUG_INFO(trans, "Failed to wake NIC\n");
 
@@ -478,5 +478,5 @@ void iwl_trans_sync_nmi_with_addr(struct iwl_trans *trans, u32 inta_addr,
 	if (interrupts_enabled)
 		iwl_trans_interrupts(trans, true);
 
-	iwl_trans_fw_error(trans);
+	iwl_trans_fw_error(trans, false);
 }
