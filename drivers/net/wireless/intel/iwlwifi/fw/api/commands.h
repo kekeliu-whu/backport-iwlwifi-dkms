@@ -2,7 +2,7 @@
 /*
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2020 Intel Corporation
+ * Copyright (C) 2018-2021 Intel Corporation
  */
 #ifndef __iwl_fw_api_commands_h__
 #define __iwl_fw_api_commands_h__
@@ -267,6 +267,24 @@ enum iwl_legacy_cmds {
 	HOT_SPOT_CMD = 0x53,
 
 	/**
+	 * @WNM_80211V_TIMING_MEASUREMENT_NOTIFICATION: Time Sync
+	 *	measurement notification for TM/FTM. Sent on receipt of respective
+	 *	WNM action frame for TM protocol or public action frame for FTM
+	 *	protocol from peer device along with additional meta data specified in
+	 *	&struct iwl_time_msmt_notify
+	 */
+	WNM_80211V_TIMING_MEASUREMENT_NOTIFICATION = 0x67,
+
+	/**
+	 * @WNM_80211V_TIMING_MEASUREMENT_CONFIRM_NOTIFICATION: Time Sync
+	 *	measurement confirmation notification for TM/FTM. Sent on
+	 *	receipt of Ack from peer for previously Tx'ed TM/FTM
+	 *	action frame along with additional meta data specified in
+	 *	&struct iwl_time_msmt_cfm_notify
+	 */
+	WNM_80211V_TIMING_MEASUREMENT_CONFIRM_NOTIFICATION = 0x68,
+
+	/**
 	 * @SCAN_OFFLOAD_COMPLETE:
 	 * notification, &struct iwl_periodic_scan_complete
 	 */
@@ -291,7 +309,7 @@ enum iwl_legacy_cmds {
 
 	/* Phy */
 	/**
-	 * @PHY_CONFIGURATION_CMD: &struct iwl_phy_cfg_cmd
+	 * @PHY_CONFIGURATION_CMD: &struct iwl_phy_cfg_cmd_v1 or &struct iwl_phy_cfg_cmd_v3
 	 */
 	PHY_CONFIGURATION_CMD = 0x6a,
 
@@ -304,11 +322,6 @@ enum iwl_legacy_cmds {
 	 * @PHY_DB_CMD: &struct iwl_phy_db_cmd
 	 */
 	PHY_DB_CMD = 0x6c,
-
-	/**
-	 * @CONFIG_2G_COEX_CMD: &struct iwl_config_2g_coex_cmd
-	 */
-	CONFIG_2G_COEX_CMD = 0x71,
 
 	/**
 	 * @POWER_TABLE_CMD: &struct iwl_device_power_cmd
@@ -547,11 +560,6 @@ enum iwl_legacy_cmds {
 	OFFLOADS_QUERY_CMD = 0xd5,
 
 	/**
-	 * @REMOTE_WAKE_CONFIG_CMD: &struct iwl_wowlan_remote_wake_config
-	 */
-	REMOTE_WAKE_CONFIG_CMD = 0xd6,
-
-	/**
 	 * @D0I3_END_CMD: End D0i3/D3 state, no command data
 	 */
 	D0I3_END_CMD = 0xed,
@@ -567,7 +575,8 @@ enum iwl_legacy_cmds {
 	WOWLAN_CONFIGURATION = 0xe1,
 
 	/**
-	 * @WOWLAN_TSC_RSC_PARAM: &struct iwl_wowlan_rsc_tsc_params_cmd
+	 * @WOWLAN_TSC_RSC_PARAM: &struct iwl_wowlan_rsc_tsc_params_cmd_v4,
+	 *	&struct iwl_wowlan_rsc_tsc_params_cmd
 	 */
 	WOWLAN_TSC_RSC_PARAM = 0xe2,
 
@@ -618,12 +627,28 @@ enum iwl_system_subcmd_ids {
 	 * @FW_ERROR_RECOVERY_CMD: &struct iwl_fw_error_recovery_cmd
 	 */
 	FW_ERROR_RECOVERY_CMD = 0x7,
+
+	/**
+	 * @RFI_CONFIG_CMD: &struct iwl_rfi_config_cmd
+	 */
+	RFI_CONFIG_CMD = 0xb,
+
+	/**
+	 * @RFI_GET_FREQ_TABLE_CMD: &struct iwl_rfi_config_cmd
+	 */
+	RFI_GET_FREQ_TABLE_CMD = 0xc,
 };
 
 /**
  * enum iwl_xvt_subcmd_ids - XVT group command IDs
  */
 enum iwl_xvt_subcmd_ids {
+	/**
+	 * Get/Set PHY DB Command
+	 * Handled by user space component
+	 */
+	GRP_XVT_GET_SET_PHY_DB_CMD = 0x34,
+
 	/**
 	 * @DTS_MEASUREMENT_TRIGGER_NOTIF : Notification about
 	 * DTS measurement

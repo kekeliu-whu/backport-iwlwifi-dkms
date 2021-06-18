@@ -30,6 +30,15 @@ void cfg80211_rx_assoc_resp(struct net_device *dev, struct cfg80211_bss *bss,
 	struct cfg80211_registered_device *rdev = wiphy_to_rdev(wiphy);
 	struct ieee80211_mgmt *mgmt = (struct ieee80211_mgmt *)buf;
 	struct cfg80211_connect_resp_params cr;
+	const u8 *resp_ie = mgmt->u.assoc_resp.variable;
+	size_t resp_ie_len = len - offsetof(struct ieee80211_mgmt,
+					    u.assoc_resp.variable);
+
+	if (bss->channel->band == NL80211_BAND_S1GHZ) {
+		resp_ie = (u8 *)&mgmt->u.s1g_assoc_resp.variable;
+		resp_ie_len = len - offsetof(struct ieee80211_mgmt,
+					     u.s1g_assoc_resp.variable);
+	}
 
 	memset(&cr, 0, sizeof(cr));
 	cr.status = (int)le16_to_cpu(mgmt->u.assoc_resp.status_code);
@@ -37,9 +46,8 @@ void cfg80211_rx_assoc_resp(struct net_device *dev, struct cfg80211_bss *bss,
 	cr.bss = bss;
 	cr.req_ie = req_ies;
 	cr.req_ie_len = req_ies_len;
-	cr.resp_ie = mgmt->u.assoc_resp.variable;
-	cr.resp_ie_len =
-		len - offsetof(struct ieee80211_mgmt, u.assoc_resp.variable);
+	cr.resp_ie = resp_ie;
+	cr.resp_ie_len = resp_ie_len;
 	cr.timeout_reason = NL80211_TIMEOUT_UNSPECIFIED;
 
 	trace_cfg80211_send_rx_assoc(dev, bss);
@@ -442,7 +450,7 @@ static void cfg80211_mgmt_registrations_update(struct wireless_dev *wdev)
 	struct cfg80211_mgmt_registration *reg;
 	struct mgmt_frame_regs upd = {};
 
-	ASSERT_RTNL();
+	lockdep_assert_held(&rdev->wiphy.mtx);
 
 	spin_lock_bh(&wdev->mgmt_registrations_lock);
 	if (!wdev->mgmt_registrations_need_update) {
@@ -484,10 +492,10 @@ void cfg80211_mgmt_registrations_update_wk(struct work_struct *wk)
 	rdev = container_of(wk, struct cfg80211_registered_device,
 			    mgmt_registrations_update_wk);
 
-	rtnl_lock();
+	wiphy_lock(&rdev->wiphy);
 	list_for_each_entry(wdev, &rdev->wiphy.wdev_list, list)
 		cfg80211_mgmt_registrations_update(wdev);
-	rtnl_unlock();
+	wiphy_unlock(&rdev->wiphy);
 }
 
 int cfg80211_mlme_register_mgmt(struct wireless_dev *wdev, u32 snd_portid,
