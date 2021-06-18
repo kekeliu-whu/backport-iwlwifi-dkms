@@ -2,7 +2,7 @@
 config IWLWIFI
 	tristate "Intel Wireless WiFi Next Gen AGN - Wireless-N/Advanced-N/Ultimate-N (iwlwifi) "
 	depends on m
-	depends on ((PCI && HAS_IOMEM) || VIRTIO) && CFG80211
+	depends on PCI && HAS_IOMEM && CFG80211
 	depends on FW_LOADER
 	help
 	  Select to build the driver supporting the:
@@ -87,6 +87,21 @@ config IWLWIFI_BCAST_FILTERING
 
 	  If unsure, don't enable this option, as some programs might
 	  expect incoming broadcasts for their normal operations.
+
+config IWLMEI
+	tristate "Enable V-PRO for WLAN"
+	depends on INTEL_MEI
+	depends on IWLMVM
+	depends on IWLMVM_VENDOR_CMDS
+	depends on WLAN_VENDOR_INTEL_MEI || !KERNEL_5_14
+	help
+	  Enable V-PRO. This allows to communicate with the CSME firmware.
+	  This is supported starting from Tiger Lake platforms and has been
+	  tested on 9260 devices only. Enabling this option on a platform that
+	  has a different device and has Wireless enabled on AMT can prevent
+	  WiFi from working correctly.
+
+	  If unsure, say N.
 
 menu "Debugging Options"
 

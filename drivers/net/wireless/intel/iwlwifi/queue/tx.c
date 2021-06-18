@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2020 Intel Corporation
+ * Copyright (C) 2020-2021 Intel Corporation
  */
 #include <net/tso.h>
 #include <linux/tcp.h>
@@ -12,30 +12,6 @@
 #include "iwl-fh.h"
 #include "iwl-scd.h"
 #include <linux/dmapool.h>
-
-/*
- * iwl_txq_gen2_tx_stop - Stop all Tx DMA channels
- */
-void iwl_txq_gen2_tx_stop(struct iwl_trans *trans)
-{
-	int txq_id;
-
-	/*
-	 * This function can be called before the op_mode disabled the
-	 * queues. This happens when we have an rfkill interrupt.
-	 * Since we stop Tx altogether - mark the queues as stopped.
-	 */
-	memset(trans->txqs.queue_stopped, 0,
-	       sizeof(trans->txqs.queue_stopped));
-	memset(trans->txqs.queue_used, 0, sizeof(trans->txqs.queue_used));
-
-	/* Unmap DMA from host system and free skb's */
-	for (txq_id = 0; txq_id < ARRAY_SIZE(trans->txqs.txq); txq_id++) {
-		if (!trans->txqs.txq[txq_id])
-			continue;
-		iwl_txq_gen2_unmap(trans, txq_id);
-	}
-}
 
 /*
  * iwl_txq_update_byte_tbl - Set up entry in Tx byte-count array
@@ -142,26 +118,25 @@ void iwl_txq_gen2_free_tfd(struct iwl_trans *trans, struct iwl_txq *txq)
 	 * idx is bounded by n_window
 	 */
 	int idx = iwl_txq_get_cmd_index(txq, txq->read_ptr);
+	struct sk_buff *skb;
 
 	lockdep_assert_held(&txq->lock);
+
+	if (!txq->entries)
+		return;
 
 	iwl_txq_gen2_tfd_unmap(trans, &txq->entries[idx].meta,
 			       iwl_txq_get_tfd(trans, txq, idx));
 
-	/* free SKB */
-	if (txq->entries) {
-		struct sk_buff *skb;
+	skb = txq->entries[idx].skb;
 
-		skb = txq->entries[idx].skb;
-
-		/* Can be called from irqs-disabled context
-		 * If skb is not NULL, it means that the whole queue is being
-		 * freed and that the queue is not empty - free the skb
-		 */
-		if (skb) {
-			iwl_op_mode_free_skb(trans->op_mode, skb);
-			txq->entries[idx].skb = NULL;
-		}
+	/* Can be called from irqs-disabled context
+	 * If skb is not NULL, it means that the whole queue is being
+	 * freed and that the queue is not empty - free the skb
+	 */
+	if (skb) {
+		iwl_op_mode_free_skb(trans->op_mode, skb);
+		txq->entries[idx].skb = NULL;
 	}
 }
 
@@ -400,7 +375,6 @@ static int iwl_txq_gen2_build_amsdu(struct iwl_trans *trans,
 	while (total_len) {
 		/* this is the data left for this subframe */
 		unsigned int data_left = min_t(unsigned int, mss, total_len);
-		struct sk_buff *csum_skb = NULL;
 		unsigned int tb_len;
 		dma_addr_t tb_phys;
 		u8 *subf_hdrs_start = hdr_page->pos;
@@ -431,10 +405,8 @@ static int iwl_txq_gen2_build_amsdu(struct iwl_trans *trans,
 		tb_len = hdr_page->pos - start_hdr;
 		tb_phys = dma_map_single(trans->dev, start_hdr,
 					 tb_len, DMA_TO_DEVICE);
-		if (unlikely(dma_mapping_error(trans->dev, tb_phys))) {
-			dev_kfree_skb(csum_skb);
+		if (unlikely(dma_mapping_error(trans->dev, tb_phys)))
 			goto out_err;
-		}
 		/*
 		 * No need for _with_wa, this is from the TSO page and
 		 * we leave some space at the end of it so can't hit
@@ -459,10 +431,8 @@ static int iwl_txq_gen2_build_amsdu(struct iwl_trans *trans,
 			ret = iwl_txq_gen2_set_tb_with_wa(trans, skb, tfd,
 							  tb_phys, tso.data,
 							  tb_len, NULL);
-			if (ret) {
-				dev_kfree_skb(csum_skb);
+			if (ret)
 				goto out_err;
-			}
 
 			data_left -= tb_len;
 			tso_build_data(skb, &tso, tb_len);
@@ -841,10 +811,8 @@ void iwl_txq_gen2_unmap(struct iwl_trans *trans, int txq_id)
 			int idx = iwl_txq_get_cmd_index(txq, txq->read_ptr);
 			struct sk_buff *skb = txq->entries[idx].skb;
 
-			if (WARN_ON_ONCE(!skb))
-				continue;
-
-			iwl_txq_free_tso_page(trans, skb);
+			if (!WARN_ON_ONCE(!skb))
+				iwl_txq_free_tso_page(trans, skb);
 		}
 		iwl_txq_gen2_free_tfd(trans, txq);
 		txq->read_ptr = iwl_txq_inc_wrap(trans, txq->read_ptr);
@@ -911,8 +879,8 @@ static void iwl_txq_gen2_free(struct iwl_trans *trans, int txq_id)
 	/* De-alloc array of command/tx buffers */
 	if (txq_id == trans->txqs.cmd.q_id)
 		for (i = 0; i < txq->n_window; i++) {
-			kzfree(txq->entries[i].cmd);
-			kzfree(txq->entries[i].free_buf);
+			kfree_sensitive(txq->entries[i].cmd);
+			kfree_sensitive(txq->entries[i].free_buf);
 		}
 	del_timer_sync(&txq->stuck_timer);
 
@@ -1188,6 +1156,12 @@ static int iwl_txq_alloc_response(struct iwl_trans *trans, struct iwl_txq *txq,
 
 	if (test_and_set_bit(qid, trans->txqs.queue_used)) {
 		WARN_ONCE(1, "queue %d already used", qid);
+		ret = -EIO;
+		goto error_free_resp;
+	}
+
+	if (WARN_ONCE(trans->txqs.txq[qid],
+		      "queue %d already allocated\n", qid)) {
 		ret = -EIO;
 		goto error_free_resp;
 	}
@@ -1494,8 +1468,12 @@ void iwl_txq_free_tfd(struct iwl_trans *trans, struct iwl_txq *txq)
 	 */
 	int rd_ptr = txq->read_ptr;
 	int idx = iwl_txq_get_cmd_index(txq, rd_ptr);
+	struct sk_buff *skb;
 
 	lockdep_assert_held(&txq->lock);
+
+	if (!txq->entries)
+		return;
 
 	/* We have only q->n_window txq->entries, but we use
 	 * TFD_QUEUE_SIZE_MAX tfds
@@ -1503,19 +1481,15 @@ void iwl_txq_free_tfd(struct iwl_trans *trans, struct iwl_txq *txq)
 	iwl_txq_gen1_tfd_unmap(trans, &txq->entries[idx].meta, txq, rd_ptr);
 
 	/* free SKB */
-	if (txq->entries) {
-		struct sk_buff *skb;
+	skb = txq->entries[idx].skb;
 
-		skb = txq->entries[idx].skb;
-
-		/* Can be called from irqs-disabled context
-		 * If skb is not NULL, it means that the whole queue is being
-		 * freed and that the queue is not empty - free the skb
-		 */
-		if (skb) {
-			iwl_op_mode_free_skb(trans->op_mode, skb);
-			txq->entries[idx].skb = NULL;
-		}
+	/* Can be called from irqs-disabled context
+	 * If skb is not NULL, it means that the whole queue is being
+	 * freed and that the queue is not empty - free the skb
+	 */
+	if (skb) {
+		iwl_op_mode_free_skb(trans->op_mode, skb);
+		txq->entries[idx].skb = NULL;
 	}
 }
 
@@ -1580,6 +1554,10 @@ void iwl_txq_reclaim(struct iwl_trans *trans, int txq_id, int ssn,
 			__func__, txq_id, last_to_free,
 			trans->trans_cfg->base_params->max_tfd_queue_size,
 			txq->write_ptr, txq->read_ptr);
+
+		iwl_op_mode_time_point(trans->op_mode,
+				       IWL_FW_INI_TIME_POINT_FAKE_TX,
+				       NULL);
 		goto out;
 	}
 
