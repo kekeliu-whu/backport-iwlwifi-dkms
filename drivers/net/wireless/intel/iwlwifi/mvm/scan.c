@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2012-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2012-2014, 2018-2021 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -41,6 +41,9 @@
 #define IWL_SCAN_ADWELL_N_APS_GO_FRIENDLY 10
 /* adaptive dwell number of APs override for social channels */
 #define IWL_SCAN_ADWELL_N_APS_SOCIAL_CHS 2
+
+/* minimal number of 2GHz and 5GHz channels in the regular scan request */
+#define IWL_MVM_6GHZ_PASSIVE_SCAN_MIN_CHANS 4
 
 struct iwl_mvm_scan_timing_params {
 	u32 suspend_time;
@@ -1243,14 +1246,16 @@ int iwl_mvm_config_scan(struct iwl_mvm *mvm)
 	memset(&cfg, 0, sizeof(cfg));
 
 	if (iwl_fw_lookup_cmd_ver(mvm->fw, LONG_GROUP,
-				  ADD_STA, 0) < 12)
+				  ADD_STA, 0) < 12) {
 		cfg.bcast_sta_id = mvm->aux_sta.sta_id;
-	/*
-	 * Fw doesn't use this sta anymore, pending deprecation via HOST API
-	 * change.
-	 */
-	else
+	} else if (iwl_fw_lookup_cmd_ver(mvm->fw, LONG_GROUP,
+					 SCAN_CFG_CMD, 0) < 5) {
+		/*
+		 * Fw doesn't use this sta anymore. Deprecated on SCAN_CFG_CMD
+		 * version 5.
+		 */
 		cfg.bcast_sta_id = 0xff;
+	}
 
 	cfg.tx_chains = cpu_to_le32(iwl_mvm_get_valid_tx_ant(mvm));
 	cfg.rx_chains = cpu_to_le32(iwl_mvm_scan_rx_ant(mvm));
@@ -1626,9 +1631,9 @@ iwl_mvm_umac_scan_cfg_channels_v6(struct iwl_mvm *mvm,
 			iwl_mvm_scan_ch_n_aps_flag(vif_type,
 						   cfg->v2.channel_num);
 
+		cfg->flags = cpu_to_le32(flags | n_aps_flag);
 		cfg->v2.channel_num = channels[i]->hw_value;
 		cfg->v2.band = iwl_mvm_phy_band_from_nl80211(band);
-		cfg->flags = cpu_to_le32(flags | n_aps_flag);
 		cfg->v2.iter_count = 1;
 		cfg->v2.iter_interval = 0;
 	}
@@ -1652,6 +1657,12 @@ static u8 iwl_mvm_scan_umac_chan_flags_v2(struct iwl_mvm *mvm,
 		flags |= IWL_SCAN_CHANNEL_FLAG_EBS_FRAG;
 
 	return flags;
+}
+
+static void iwl_mvm_scan_6ghz_passive_scan(struct iwl_mvm *mvm,
+					   struct iwl_mvm_scan_params *params,
+					   struct ieee80211_vif *vif)
+{
 }
 
 static u16 iwl_mvm_scan_umac_flags_v2(struct iwl_mvm *mvm,
@@ -1965,6 +1976,7 @@ iwl_mvm_scan_umac_fill_ch_p_v6(struct iwl_mvm *mvm,
 					  params->n_channels,
 					  channel_cfg_flags,
 					  vif->type);
+
 }
 
 static int iwl_mvm_scan_umac_v12(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
@@ -1986,9 +1998,9 @@ static int iwl_mvm_scan_umac_v12(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 					     &scan_p->general_params,
 					     gen_flags);
 
-	 ret = iwl_mvm_fill_scan_sched_params(params,
-					      scan_p->periodic_params.schedule,
-					      &scan_p->periodic_params.delay);
+	ret = iwl_mvm_fill_scan_sched_params(params,
+					     scan_p->periodic_params.schedule,
+					     &scan_p->periodic_params.delay);
 	if (ret)
 		return ret;
 
@@ -2019,9 +2031,9 @@ static int iwl_mvm_scan_umac_v14(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 					     &scan_p->general_params,
 					     gen_flags);
 
-	 ret = iwl_mvm_fill_scan_sched_params(params,
-					      scan_p->periodic_params.schedule,
-					      &scan_p->periodic_params.delay);
+	ret = iwl_mvm_fill_scan_sched_params(params,
+					     scan_p->periodic_params.schedule,
+					     &scan_p->periodic_params.delay);
 	if (ret)
 		return ret;
 
@@ -2097,7 +2109,7 @@ static int iwl_mvm_check_running_scans(struct iwl_mvm *mvm, int type)
 		/* Something is wrong if no scan was running but we
 		 * ran out of scans.
 		 */
-		/* fall through */
+		fallthrough;
 	default:
 		WARN_ON(1);
 		break;
@@ -2250,6 +2262,8 @@ int iwl_mvm_reg_scan_start(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 		params.iter_notif = true;
 
 	iwl_mvm_build_scan_probe(mvm, vif, ies, &params);
+
+	iwl_mvm_scan_6ghz_passive_scan(mvm, &params, vif);
 
 	uid = iwl_mvm_build_scan_cmd(mvm, vif, &hcmd, &params,
 				     IWL_MVM_SCAN_REGULAR);
@@ -2571,6 +2585,8 @@ void iwl_mvm_report_scan_aborted(struct iwl_mvm *mvm)
 				.aborted = true,
 			};
 
+			cancel_delayed_work(&mvm->scan_timeout_dwork);
+
 			ieee80211_scan_completed(mvm->hw, &info);
 			mvm->scan_uid_status[uid] = 0;
 		}
@@ -2611,6 +2627,7 @@ void iwl_mvm_report_scan_aborted(struct iwl_mvm *mvm)
 				.aborted = true,
 			};
 
+			cancel_delayed_work(&mvm->scan_timeout_dwork);
 			ieee80211_scan_completed(mvm->hw, &info);
 		}
 

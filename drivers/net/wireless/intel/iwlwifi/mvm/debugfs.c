@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2012-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2012-2014, 2018-2021 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -379,7 +379,6 @@ static ssize_t iwl_dbgfs_sar_geo_profile_read(struct file *file,
 	int pos = 0;
 	int bufsz = sizeof(buf);
 	int tbl_idx;
-	u8 *value;
 
 	if (!iwl_mvm_firmware_running(mvm))
 		return -EIO;
@@ -395,16 +394,18 @@ static ssize_t iwl_dbgfs_sar_geo_profile_read(struct file *file,
 		pos = scnprintf(buf, bufsz,
 				"SAR geographic profile disabled\n");
 	} else {
-		value = &mvm->fwrt.geo_profiles[tbl_idx - 1].values[0];
-
 		pos += scnprintf(buf + pos, bufsz - pos,
 				 "Use geographic profile %d\n", tbl_idx);
 		pos += scnprintf(buf + pos, bufsz - pos,
 				 "2.4GHz:\n\tChain A offset: %hhu dBm\n\tChain B offset: %hhu dBm\n\tmax tx power: %hhu dBm\n",
-				 value[1], value[2], value[0]);
+				 mvm->fwrt.geo_profiles[tbl_idx - 1].bands[0].max,
+				 mvm->fwrt.geo_profiles[tbl_idx - 1].bands[0].chains[0],
+				 mvm->fwrt.geo_profiles[tbl_idx - 1].bands[0].chains[1]);
 		pos += scnprintf(buf + pos, bufsz - pos,
 				 "5.2GHz:\n\tChain A offset: %hhu dBm\n\tChain B offset: %hhu dBm\n\tmax tx power: %hhu dBm\n",
-				 value[4], value[5], value[3]);
+				 mvm->fwrt.geo_profiles[tbl_idx - 1].bands[1].max,
+				 mvm->fwrt.geo_profiles[tbl_idx - 1].bands[1].chains[0],
+				 mvm->fwrt.geo_profiles[tbl_idx - 1].bands[1].chains[1]);
 	}
 	mutex_unlock(&mvm->mutex);
 
@@ -1097,7 +1098,9 @@ static ssize_t iwl_dbgfs_fw_restart_write(struct iwl_mvm *mvm, char *buf,
 		mvm->fw_restart++;
 
 	/* take the return value to make compiler happy - it will fail anyway */
-	ret = iwl_mvm_send_cmd_pdu(mvm, REPLY_ERROR, 0, 0, NULL);
+	ret = iwl_mvm_send_cmd_pdu(mvm,
+				   WIDE_ID(LONG_GROUP, REPLY_ERROR),
+				   0, 0, NULL);
 
 	mutex_unlock(&mvm->mutex);
 
@@ -1243,9 +1246,9 @@ static ssize_t iwl_dbgfs_inject_packet_write(struct iwl_mvm *mvm,
 	if (ret)
 		goto out;
 
-	/* avoid invalid memory access */
+	/* avoid invalid memory access and malformed packet */
 	if (bin_len < sizeof(*pkt) ||
-	    bin_len < sizeof(*pkt) + iwl_rx_packet_payload_len(pkt))
+	    bin_len != sizeof(*pkt) + iwl_rx_packet_payload_len(pkt))
 		goto out;
 
 	local_bh_disable();
@@ -1284,10 +1287,10 @@ static int _iwl_dbgfs_inject_beacon_ie(struct iwl_mvm *mvm, char *bin, int len)
 			IWL_UCODE_TLV_API_NEW_BEACON_TEMPLATE))
 		return -EINVAL;
 
-	rcu_read_lock();
+	mutex_lock(&mvm->mutex);
 
 	for (i = 0; i < NUM_MAC_INDEX_DRIVER; i++) {
-		vif = iwl_mvm_rcu_dereference_vif_id(mvm, i, true);
+		vif = iwl_mvm_rcu_dereference_vif_id(mvm, i, false);
 		if (!vif)
 			continue;
 
@@ -1327,18 +1330,16 @@ static int _iwl_dbgfs_inject_beacon_ie(struct iwl_mvm *mvm, char *bin, int len)
 				 &beacon_cmd.tim_size,
 				 beacon->data, beacon->len);
 
-	mutex_lock(&mvm->mutex);
 	iwl_mvm_mac_ctxt_send_beacon_cmd(mvm, beacon, &beacon_cmd,
 					 sizeof(beacon_cmd));
 	mutex_unlock(&mvm->mutex);
 
 	dev_kfree_skb(beacon);
 
-	rcu_read_unlock();
 	return 0;
 
 out_err:
-	rcu_read_unlock();
+	mutex_unlock(&mvm->mutex);
 	return -EINVAL;
 }
 
@@ -1419,6 +1420,24 @@ static ssize_t iwl_dbgfs_fw_dbg_collect_write(struct iwl_mvm *mvm,
 
 	iwl_fw_dbg_collect(&mvm->fwrt, FW_DBG_TRIGGER_USER, buf,
 			   (count - 1), NULL);
+
+	return count;
+}
+
+static ssize_t iwl_dbgfs_dbg_time_point_write(struct iwl_mvm *mvm,
+					      char *buf, size_t count,
+					      loff_t *ppos)
+{
+	u32 timepoint;
+
+	if (kstrtou32(buf, 0, &timepoint))
+		return -EINVAL;
+
+	if (timepoint == IWL_FW_INI_TIME_POINT_INVALID ||
+	    timepoint >= IWL_FW_INI_TIME_POINT_NUM)
+		return -EINVAL;
+
+	iwl_dbg_tlv_time_point(&mvm->fwrt, timepoint, NULL);
 
 	return count;
 }
@@ -2127,6 +2146,72 @@ iwl_dbgfs_ltr_config_write(struct iwl_mvm *mvm,
 	return ret ?: count;
 }
 
+static ssize_t iwl_dbgfs_rfi_freq_table_write(struct iwl_mvm *mvm, char *buf,
+					      size_t count, loff_t *ppos)
+{
+	int ret = 0;
+	u16 op_id;
+
+	if (kstrtou16(buf, 10, &op_id))
+		return -EINVAL;
+
+	/* value zero triggers re-sending the default table to the device */
+	if (!op_id) {
+		mutex_lock(&mvm->mutex);
+		ret = iwl_rfi_send_config_cmd(mvm, NULL);
+		mutex_unlock(&mvm->mutex);
+	} else {
+		ret = -EOPNOTSUPP; /* in the future a new table will be added */
+	}
+
+	return ret ?: count;
+}
+
+/* The size computation is as follows:
+ * each number needs at most 3 characters, number of rows is the size of
+ * the table; So, need 5 chars for the "freq: " part and each tuple afterwards
+ * needs 6 characters for numbers and 5 for the punctuation around.
+ */
+#define IWL_RFI_BUF_SIZE (IWL_RFI_LUT_INSTALLED_SIZE *\
+				(5 + IWL_RFI_LUT_ENTRY_CHANNELS_NUM * (6 + 5)))
+
+static ssize_t iwl_dbgfs_rfi_freq_table_read(struct file *file,
+					     char __user *user_buf,
+					     size_t count, loff_t *ppos)
+{
+	struct iwl_mvm *mvm = file->private_data;
+	struct iwl_rfi_freq_table_resp_cmd *resp;
+	u32 status;
+	char buf[IWL_RFI_BUF_SIZE];
+	int i, j, pos = 0;
+
+	resp = iwl_rfi_get_freq_table(mvm);
+	if (IS_ERR(resp))
+		return PTR_ERR(resp);
+
+	status = le32_to_cpu(resp->status);
+	if (status != RFI_FREQ_TABLE_OK) {
+		scnprintf(buf, IWL_RFI_BUF_SIZE, "status = %d\n", status);
+		goto out;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(resp->table); i++) {
+		pos += scnprintf(buf + pos, IWL_RFI_BUF_SIZE - pos, "%d: ",
+				 resp->table[i].freq);
+
+		for (j = 0; j < ARRAY_SIZE(resp->table[i].channels); j++)
+			pos += scnprintf(buf + pos, IWL_RFI_BUF_SIZE - pos,
+					 "(%d, %d) ",
+					 resp->table[i].channels[j],
+					 resp->table[i].bands[j]);
+		pos += scnprintf(buf + pos, IWL_RFI_BUF_SIZE - pos, "\n");
+	}
+
+out:
+	kfree(resp);
+	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+}
+
 MVM_DEBUGFS_READ_WRITE_FILE_OPS(prph_reg, 64);
 
 /* Device wide debugfs entries */
@@ -2158,6 +2243,7 @@ MVM_DEBUGFS_WRITE_FILE_OPS(bt_force_ant, 10);
 MVM_DEBUGFS_READ_WRITE_FILE_OPS(scan_ant_rxchain, 8);
 MVM_DEBUGFS_READ_WRITE_FILE_OPS(fw_dbg_conf, 8);
 MVM_DEBUGFS_WRITE_FILE_OPS(fw_dbg_collect, 64);
+MVM_DEBUGFS_WRITE_FILE_OPS(dbg_time_point, 64);
 MVM_DEBUGFS_WRITE_FILE_OPS(indirection_tbl,
 			   (IWL_RSS_INDIRECTION_TABLE_SIZE * 2));
 MVM_DEBUGFS_WRITE_FILE_OPS(inject_packet, 512);
@@ -2191,6 +2277,7 @@ MVM_DEBUGFS_READ_WRITE_STA_FILE_OPS(amsdu_len, 16);
 MVM_DEBUGFS_READ_WRITE_FILE_OPS(he_sniffer_params, 32);
 
 MVM_DEBUGFS_WRITE_FILE_OPS(ltr_config, 512);
+MVM_DEBUGFS_READ_WRITE_FILE_OPS(rfi_freq_table, 16);
 
 static ssize_t iwl_dbgfs_mem_read(struct file *file, char __user *user_buf,
 				  size_t count, loff_t *ppos)
@@ -2337,7 +2424,7 @@ void iwl_mvm_sta_add_debugfs(struct ieee80211_hw *hw,
 	MVM_DEBUGFS_ADD_STA_FILE(amsdu_len, dir, 0600);
 }
 
-void iwl_mvm_dbgfs_register(struct iwl_mvm *mvm, struct dentry *dbgfs_dir)
+void iwl_mvm_dbgfs_register(struct iwl_mvm *mvm)
 {
 #ifdef CPTCFG_IWLWIFI_THERMAL_DEBUGFS
 	struct iwl_tt_params *tt_params = &mvm->thermal_throttle.params;
@@ -2347,22 +2434,20 @@ void iwl_mvm_dbgfs_register(struct iwl_mvm *mvm, struct dentry *dbgfs_dir)
 
 	spin_lock_init(&mvm->drv_stats_lock);
 
-	mvm->debugfs_dir = dbgfs_dir;
-
 #ifdef CPTCFG_IWLWIFI_THERMAL_DEBUGFS
-	MVM_DEBUGFS_ADD_FILE(tt_tx_backoff, dbgfs_dir, 0400);
+	MVM_DEBUGFS_ADD_FILE(tt_tx_backoff, mvm->debugfs_dir, 0400);
 #endif
 	MVM_DEBUGFS_ADD_FILE(tx_flush, mvm->debugfs_dir, 0200);
 	MVM_DEBUGFS_ADD_FILE(sta_drain, mvm->debugfs_dir, 0200);
 	MVM_DEBUGFS_ADD_FILE(sram, mvm->debugfs_dir, 0600);
 	MVM_DEBUGFS_ADD_FILE(set_nic_temperature, mvm->debugfs_dir, 0600);
-	MVM_DEBUGFS_ADD_FILE(nic_temp, dbgfs_dir, 0400);
-	MVM_DEBUGFS_ADD_FILE(ctdp_budget, dbgfs_dir, 0400);
-	MVM_DEBUGFS_ADD_FILE(stop_ctdp, dbgfs_dir, 0200);
-	MVM_DEBUGFS_ADD_FILE(force_ctkill, dbgfs_dir, 0200);
-	MVM_DEBUGFS_ADD_FILE(stations, dbgfs_dir, 0400);
-	MVM_DEBUGFS_ADD_FILE(bt_notif, dbgfs_dir, 0400);
-	MVM_DEBUGFS_ADD_FILE(bt_cmd, dbgfs_dir, 0400);
+	MVM_DEBUGFS_ADD_FILE(nic_temp, mvm->debugfs_dir, 0400);
+	MVM_DEBUGFS_ADD_FILE(ctdp_budget, mvm->debugfs_dir, 0400);
+	MVM_DEBUGFS_ADD_FILE(stop_ctdp, mvm->debugfs_dir, 0200);
+	MVM_DEBUGFS_ADD_FILE(force_ctkill, mvm->debugfs_dir, 0200);
+	MVM_DEBUGFS_ADD_FILE(stations, mvm->debugfs_dir, 0400);
+	MVM_DEBUGFS_ADD_FILE(bt_notif, mvm->debugfs_dir, 0400);
+	MVM_DEBUGFS_ADD_FILE(bt_cmd, mvm->debugfs_dir, 0400);
 	MVM_DEBUGFS_ADD_FILE(disable_power_off, mvm->debugfs_dir, 0600);
 	MVM_DEBUGFS_ADD_FILE(fw_ver, mvm->debugfs_dir, 0400);
 	MVM_DEBUGFS_ADD_FILE(fw_rx_stats, mvm->debugfs_dir, 0400);
@@ -2380,11 +2465,12 @@ void iwl_mvm_dbgfs_register(struct iwl_mvm *mvm, struct dentry *dbgfs_dir)
 	MVM_DEBUGFS_ADD_FILE(inject_packet, mvm->debugfs_dir, 0200);
 	MVM_DEBUGFS_ADD_FILE(inject_beacon_ie, mvm->debugfs_dir, 0200);
 	MVM_DEBUGFS_ADD_FILE(inject_beacon_ie_restore, mvm->debugfs_dir, 0200);
+	MVM_DEBUGFS_ADD_FILE(rfi_freq_table, mvm->debugfs_dir, 0600);
 
 	if (mvm->fw->phy_integration_ver)
 		MVM_DEBUGFS_ADD_FILE(phy_integration_ver, mvm->debugfs_dir, 0400);
 #ifdef CONFIG_ACPI
-	MVM_DEBUGFS_ADD_FILE(sar_geo_profile, dbgfs_dir, 0400);
+	MVM_DEBUGFS_ADD_FILE(sar_geo_profile, mvm->debugfs_dir, 0400);
 #endif
 #ifdef CPTCFG_IWLMVM_VENDOR_CMDS
 	MVM_DEBUGFS_ADD_FILE(tx_power_status, mvm->debugfs_dir, 0400);
@@ -2485,18 +2571,19 @@ void iwl_mvm_dbgfs_register(struct iwl_mvm *mvm, struct dentry *dbgfs_dir)
 			   &tt_params->tx_protection_exit);
 #endif
 
-	debugfs_create_file("mem", 0600, dbgfs_dir, mvm, &iwl_dbgfs_mem_ops);
+	debugfs_create_file("mem", 0600, mvm->debugfs_dir, mvm,
+			    &iwl_dbgfs_mem_ops);
 
 	/*
 	 * Create a symlink with mac80211. It will be removed when mac80211
 	 * exists (before the opmode exists which removes the target.)
 	 */
 #if LINUX_VERSION_IS_GEQ(3,12,0)
-	snprintf(buf, 100, "../../%pd2", dbgfs_dir->d_parent);
+	snprintf(buf, 100, "../../%pd2", mvm->debugfs_dir->d_parent);
 #else
 	snprintf(buf, 100, "../../%s/%s",
-		 dbgfs_dir->d_parent->d_parent->d_name.name,
-		 dbgfs_dir->d_parent->d_name.name);
+		 mvm->debugfs_dir->d_parent->d_parent->d_name.name,
+		 mvm->debugfs_dir->d_parent->d_name.name);
 #endif
 	debugfs_create_symlink("iwlwifi", mvm->hw->wiphy->debugfsdir, buf);
 }
