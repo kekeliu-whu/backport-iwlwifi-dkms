@@ -1,3 +1,15 @@
+backport-iwlwifi-dkms (9257-0ubuntu1) hirsute; urgency=low
+
+  * New release
+    - upstream version 9257 commit ad088b602027b9.
+    - update debian/backport-iwlwifi-dkms.modaliases.
+
+  * debian/patches:
+    - drop 0006-backport-address-interface-change-in-linux-skbuff.h-.patch
+    - update 0005-Makefile.kernel-pass-fno-stack-clash-protection-and-.patch
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Thu, 17 Jun 2021 15:11:36 +0800
+
 backport-iwlwifi-dkms (8794-0ubuntu1) hirsute; urgency=low
 
   * New release
