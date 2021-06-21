@@ -272,24 +272,22 @@ static int iwl_dbg_tlv_config_set(struct iwl_trans *trans,
 
 	if (tp <= IWL_FW_INI_TIME_POINT_INVALID ||
 	    tp >= IWL_FW_INI_TIME_POINT_NUM) {
-		IWL_WARN(trans,
-			 "WRT: Invalid time point %u for config set TLV\n",
-			 tp);
+		IWL_DEBUG_FW(trans,
+			     "WRT: Invalid time point %u for config set TLV\n", tp);
 		return -EINVAL;
 	}
 
 	if (type <= IWL_FW_INI_CONFIG_SET_TYPE_INVALID ||
 	    type >= IWL_FW_INI_CONFIG_SET_TYPE_MAX_NUM) {
-		IWL_WARN(trans,
-			 "WRT: Invalid config set type %u for config set TLV\n",
-			 type);
+		IWL_DEBUG_FW(trans,
+			     "WRT: Invalid config set type %u for config set TLV\n", type);
 		return -EINVAL;
 	}
 
 	if (type != IWL_FW_INI_CONFIG_SET_TYPE_PERIPH_SCRATCH_HWM ||
 	    trans->trans_cfg->device_family < IWL_DEVICE_FAMILY_AX210) {
-		IWL_WARN(trans,
-			 "WRT: Config set type %u is not supported\n", type);
+		IWL_DEBUG_FW(trans,
+			     "WRT: Config set type %u is not supported\n", type);
 		return -EINVAL;
 	}
 
@@ -716,6 +714,12 @@ static int iwl_dbg_tlv_update_dram(struct iwl_fw_runtime *fwrt,
 	int j, fw_mon_idx = 0;
 	struct iwl_buf_alloc_cmd *data;
 
+	if (le32_to_cpu(fwrt->trans->dbg.fw_mon_cfg[alloc_id].buf_location) !=
+			IWL_FW_INI_LOCATION_DRAM_PATH) {
+		IWL_DEBUG_FW(fwrt, "DRAM_PATH is not supported alloc_id %u\n", alloc_id);
+		return -1;
+	}
+
 	fw_mon = &fwrt->trans->dbg.fw_mon_ini[alloc_id];
 
 	/* the first fragment of DBGC1 is given to the FW via register
@@ -726,7 +730,7 @@ static int iwl_dbg_tlv_update_dram(struct iwl_fw_runtime *fwrt,
 
 	remain_frags = fw_mon->num_frags - fw_mon_idx;
 	if (!remain_frags)
-		return 0;
+		return -1;
 
 	num_frags = min_t(u32, remain_frags, BUF_ALLOC_MAX_NUM_FRAGS);
 	data = &dram_info->dram_frags[alloc_id - 1];
@@ -753,7 +757,7 @@ static int iwl_dbg_tlv_update_dram(struct iwl_fw_runtime *fwrt,
 
 static void iwl_dbg_tlv_update_drams(struct iwl_fw_runtime *fwrt)
 {
-	int ret, i;
+	int ret, i, dram_alloc = 0;
 	struct iwl_dram_info dram_info;
 	struct iwl_dram_data *frags =
 		&fwrt->trans->dbg.fw_mon_ini[IWL_FW_INI_ALLOCATION_ID_DBGC1].frags[0];
@@ -768,15 +772,18 @@ static void iwl_dbg_tlv_update_drams(struct iwl_fw_runtime *fwrt)
 	for (i = IWL_FW_INI_ALLOCATION_ID_DBGC1;
 	     i <= IWL_FW_INI_ALLOCATION_ID_DBGC3; i++) {
 		ret = iwl_dbg_tlv_update_dram(fwrt, i, &dram_info);
-		if (ret)
+		if (!ret)
+			dram_alloc++;
+		else
 			IWL_WARN(fwrt,
 				 "WRT: Failed to set DRAM buffer for alloc id %d, ret=%d\n",
 				 i, ret);
 	}
-	memcpy(frags->block, &dram_info, sizeof(dram_info));
-	IWL_DEBUG_FW(fwrt, "block data after  %016x\n",
-		     *((int *)fwrt->trans->dbg.fw_mon_ini[1].frags[0].block));
-	return;
+	if (dram_alloc) {
+		memcpy(frags->block, &dram_info, sizeof(dram_info));
+		IWL_DEBUG_FW(fwrt, "block data after  %016x\n",
+			     *((int *)fwrt->trans->dbg.fw_mon_ini[1].frags[0].block));
+	}
 }
 
 static void iwl_dbg_tlv_send_hcmds(struct iwl_fw_runtime *fwrt,
