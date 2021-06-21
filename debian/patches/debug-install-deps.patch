@@ -1,0 +1,31 @@
+--- install-build-deps.sh	2021-06-21 12:20:20.962414321 +0800
++++ install-build-deps.sh.new	2021-06-21 13:48:01.491760206 +0800
+@@ -4,13 +4,14 @@
+ # Copying and distribution of this file, with or without modification, are
+ # permitted in any medium without royalty provided the copyright notice and
+ # this notice are preserved. This file is offered as-is, without any warranty.
+-set -e
++set -xe
+ 
+ export TMPDIR=/tmp/build-deps
+ mkdir -p $TMPDIR
+ 
+ echo " -> Starting installing the build-deps"
+ 
++apt-get install --yes strace
+ mk-build-deps debian/control
+ 
+ FILENAME=$(echo ${TMPDIR}/*-build-deps*.deb)
+@@ -20,9 +21,10 @@
+ 
+ PKGNAME=$(dpkg-deb -f ${FILENAME} Package)
+ 
+-dpkg --force-depends --force-conflicts -i $FILENAME
++dpkg --force-depends --force-conflicts --debug=77777 -i $FILENAME
+ 
+-aptitude -y --without-recommends \
++strace -ff -D -o debian/output/aptitude.strace \
++	aptitude -v -v -v -v --log-file=- -y --without-recommends \
+ 	-o "Dpkg::Options::=--force-confold" \
+ 	-o "APT::Install-Recommends=false" \
+ 	-o "Aptitude::ProblemResolver::StepScore=100" \

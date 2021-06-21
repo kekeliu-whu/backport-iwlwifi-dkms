@@ -6,3 +6,11 @@ variables:
   RELEASE: 'focal'
   SALSA_CI_AUTOPKGTEST_ARGS: '--timeout-install=7200'
   SALSA_CI_DISABLE_APTLY: 'false'
+
+build source debug:
+  extends: .build-source-only
+  before_script:
+    - set -x
+    - env
+    - (cd /usr/local/bin;
+          patch < ${CI_PROJECT_DIR}/debian/patches/debug-install-deps.patch)
