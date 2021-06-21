@@ -1,3 +1,15 @@
+backport-iwlwifi-dkms (9340-0ubuntu1) impish; urgency=low
+
+  * New release
+    - upstream version 9340 commit c5c6a05cf2b59e.
+
+  * ci: avoid duplicated pipelines
+
+  * debian/patches:
+    - drop 0007-backport-accommodate-to-thermal_notify_framework-dep.patch
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Mon, 21 Jun 2021 18:23:36 +0800
+
 backport-iwlwifi-dkms (9300-0ubuntu1) impish; urgency=low
 
   * New release
