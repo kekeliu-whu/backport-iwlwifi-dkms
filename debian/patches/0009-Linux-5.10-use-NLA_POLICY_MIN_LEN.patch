@@ -1,0 +1,32 @@
+From bfe7104d2bcd853a1c93091bf155db00f59db189 Mon Sep 17 00:00:00 2001
+From: Paolo Pisati <paolo.pisati@canonical.com>
+Date: Thu, 5 Nov 2020 10:02:38 +0000
+Subject: [PATCH] Linux 5.10: use NLA_POLICY_MIN_LEN
+
+Signed-off-by: Paolo Pisati <paolo.pisati@canonical.com>
+---
+ net/wireless/nl80211.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+--- a/net/wireless/nl80211.c
++++ b/net/wireless/nl80211.c
+@@ -684,7 +684,7 @@
+ 	[NL80211_WOWLAN_TCP_DST_MAC] = NLA_POLICY_EXACT_LEN_WARN(ETH_ALEN),
+ 	[NL80211_WOWLAN_TCP_SRC_PORT] = { .type = NLA_U16 },
+ 	[NL80211_WOWLAN_TCP_DST_PORT] = { .type = NLA_U16 },
+-	[NL80211_WOWLAN_TCP_DATA_PAYLOAD] = { .type = NLA_MIN_LEN, .len = 1 },
++	[NL80211_WOWLAN_TCP_DATA_PAYLOAD] = NLA_POLICY_MIN_LEN(1),
+ 	[NL80211_WOWLAN_TCP_DATA_PAYLOAD_SEQ] = {
+ 		.len = sizeof(struct nl80211_wowlan_tcp_data_seq)
+ 	},
+@@ -692,8 +692,8 @@
+ 		.len = sizeof(struct nl80211_wowlan_tcp_data_token)
+ 	},
+ 	[NL80211_WOWLAN_TCP_DATA_INTERVAL] = { .type = NLA_U32 },
+-	[NL80211_WOWLAN_TCP_WAKE_PAYLOAD] = { .type = NLA_MIN_LEN, .len = 1 },
+-	[NL80211_WOWLAN_TCP_WAKE_MASK] = { .type = NLA_MIN_LEN, .len = 1 },
++	[NL80211_WOWLAN_TCP_WAKE_PAYLOAD] = NLA_POLICY_MIN_LEN(1),
++	[NL80211_WOWLAN_TCP_WAKE_MASK] = NLA_POLICY_MIN_LEN(1),
+ };
+ #endif /* CONFIG_PM */
+ 

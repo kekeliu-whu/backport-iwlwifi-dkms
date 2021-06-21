@@ -3,3 +3,5 @@
 0005-Makefile.kernel-pass-fno-stack-clash-protection-and-.patch
 0006-backport-address-interface-change-in-linux-skbuff.h-.patch
 0007-backport-netlink-remove-NLA_EXACT_LEN_WARN.patch
+0008-Linux-5.10-redefine-kzfree-as-kfree_sensitive.patch
+0009-Linux-5.10-use-NLA_POLICY_MIN_LEN.patch

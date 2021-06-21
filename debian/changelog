@@ -1,3 +1,9 @@
+backport-iwlwifi-dkms (8613-0ubuntu2) hirsute; urgency=medium
+
+  * Linux 5.10 compatibility fixes
+
+ -- Paolo Pisati <paolo.pisati@canonical.com>  Thu, 05 Nov 2020 10:37:38 +0000
+
 backport-iwlwifi-dkms (8613-0ubuntu1) groovy; urgency=low
 
   * New release

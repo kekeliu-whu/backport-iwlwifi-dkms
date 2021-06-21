@@ -1,0 +1,32 @@
+From 5f5a1b7a266057cc9d87637fef410871eb38b03d Mon Sep 17 00:00:00 2001
+From: Paolo Pisati <paolo.pisati@canonical.com>
+Date: Wed, 4 Nov 2020 16:05:11 +0000
+Subject: [PATCH] Linux 5.10: redefine kzfree as kfree_sensitive
+
+Signed-off-by: Paolo Pisati <paolo.pisati@canonical.com>
+---
+ backport-include/linux/compat.h | 4 ++++
+ net/mac80211/aead_api.c         | 1 +
+ 2 files changed, 5 insertions(+)
+
+--- a/backport-include/linux/compat.h
++++ b/backport-include/linux/compat.h
+@@ -18,4 +18,8 @@
+ extern int compat_put_timespec(const struct timespec *, void __user *);
+ #endif
+ 
++#if LINUX_VERSION_IS_GEQ(5,10,0)
++#define kzfree kfree_sensitive
++#endif
++
+ #endif /* __BACKPORT_COMPAT_H */
+--- a/net/mac80211/aead_api.c
++++ b/net/mac80211/aead_api.c
+@@ -7,6 +7,7 @@
+  * Rewrite: Copyright (C) 2013 Linaro Ltd <ard.biesheuvel@linaro.org>
+  */
+ 
++#include <linux/compat.h>
+ #include <linux/kernel.h>
+ #include <linux/types.h>
+ #include <linux/err.h>
