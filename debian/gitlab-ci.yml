@@ -1,8 +1,9 @@
 include:
+  - template: 'Workflows/MergeRequest-Pipelines.gitlab-ci.yml'
   - https://gitlab.com/hustle-ci/pipeline/raw/master/salsa-ci.yml
   - https://gitlab.com/hustle-ci/pipeline/raw/master/pipeline-jobs.yml
 
 variables:
-  RELEASE: 'groovy'
+  RELEASE: 'impish'
   SALSA_CI_AUTOPKGTEST_ARGS: '--timeout-install=7200'
   SALSA_CI_DISABLE_APTLY: 'false'

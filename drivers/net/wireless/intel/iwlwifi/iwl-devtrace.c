@@ -3,11 +3,6 @@
  *
  * Copyright(c) 2009 - 2014 Intel Corporation. All rights reserved.
  * Copyright (C) 2018 Intel Corporation
- *
- * Contact Information:
- *  Intel Linux Wireless <linuxwifi@intel.com>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
  *****************************************************************************/
 
 #include <linux/module.h>
@@ -22,7 +17,4 @@
 EXPORT_TRACEPOINT_SYMBOL(iwlwifi_dev_ucode_event);
 EXPORT_TRACEPOINT_SYMBOL(iwlwifi_dev_ucode_cont_event);
 EXPORT_TRACEPOINT_SYMBOL(iwlwifi_dev_ucode_wrap_event);
-#ifdef CPTCFG_MAC80211_LATENCY_MEASUREMENTS
-EXPORT_TRACEPOINT_SYMBOL(iwlwifi_dev_tx_latency_thrshld);
-#endif /* CPTCFG_MAC80211_LATENCY_MEASUREMENTS */
 #endif /* __CHECKER__ */

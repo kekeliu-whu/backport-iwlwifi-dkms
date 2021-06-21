@@ -1,65 +1,9 @@
-/******************************************************************************
- *
- * This file is provided under a dual BSD/GPLv2 license.  When using or
- * redistributing this file, you may do so under either license.
- *
- * GPL LICENSE SUMMARY
- *
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2012 - 2014, 2018 - 2020 Intel Corporation
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
- *
- * The full GNU General Public License is included in this distribution
- * in the file called COPYING.
- *
- * Contact Information:
- *  Intel Linux Wireless <linuxwifi@intel.com>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- * BSD LICENSE
- *
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2012 - 2014, 2018 - 2020 Intel Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- *  * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- *  * Neither the name Intel Corporation nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *****************************************************************************/
-
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
+/*
+ * Copyright (C) 2012-2014, 2018-2021 Intel Corporation
+ * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
+ * Copyright (C) 2016-2017 Intel Deutschland GmbH
+ */
 #include <linux/etherdevice.h>
 #include <net/mac80211.h>
 
@@ -97,6 +41,9 @@
 #define IWL_SCAN_ADWELL_N_APS_GO_FRIENDLY 10
 /* adaptive dwell number of APs override for social channels */
 #define IWL_SCAN_ADWELL_N_APS_SOCIAL_CHS 2
+
+/* minimal number of 2GHz and 5GHz channels in the regular scan request */
+#define IWL_MVM_6GHZ_PASSIVE_SCAN_MIN_CHANS 4
 
 struct iwl_mvm_scan_timing_params {
 	u32 suspend_time;
@@ -211,7 +158,7 @@ iwl_mvm_scan_rate_n_flags(struct iwl_mvm *mvm, enum nl80211_band band,
 	tx_ant = BIT(mvm->scan_last_antenna_idx) << RATE_MCS_ANT_POS;
 
 	if (band == NL80211_BAND_2GHZ && !no_cck)
-		return cpu_to_le32(IWL_RATE_1M_PLCP | RATE_MCS_CCK_MSK |
+		return cpu_to_le32(IWL_RATE_1M_PLCP | RATE_MCS_CCK_MSK_V1 |
 				   tx_ant);
 	else
 		return cpu_to_le32(IWL_RATE_6M_PLCP | tx_ant);
@@ -566,7 +513,7 @@ iwl_mvm_config_sched_scan_profiles(struct iwl_mvm *mvm,
 {
 	struct iwl_scan_offload_profile *profile;
 	struct iwl_scan_offload_profile_cfg_v1 *profile_cfg_v1;
-	struct iwl_scan_offload_blacklist *blacklist;
+	struct iwl_scan_offload_blocklist *blocklist;
 	struct iwl_scan_offload_profile_cfg_data *data;
 	int max_profiles = iwl_umac_scan_get_max_profiles(mvm->fw);
 	int profile_cfg_size = sizeof(*data) +
@@ -577,7 +524,7 @@ iwl_mvm_config_sched_scan_profiles(struct iwl_mvm *mvm,
 		.dataflags[0] = IWL_HCMD_DFL_NOCOPY,
 		.dataflags[1] = IWL_HCMD_DFL_NOCOPY,
 	};
-	int blacklist_len;
+	int blocklist_len;
 	int i;
 	int ret;
 
@@ -585,22 +532,22 @@ iwl_mvm_config_sched_scan_profiles(struct iwl_mvm *mvm,
 		return -EIO;
 
 	if (mvm->fw->ucode_capa.flags & IWL_UCODE_TLV_FLAGS_SHORT_BL)
-		blacklist_len = IWL_SCAN_SHORT_BLACKLIST_LEN;
+		blocklist_len = IWL_SCAN_SHORT_BLACKLIST_LEN;
 	else
-		blacklist_len = IWL_SCAN_MAX_BLACKLIST_LEN;
+		blocklist_len = IWL_SCAN_MAX_BLACKLIST_LEN;
 
-	blacklist = kcalloc(blacklist_len, sizeof(*blacklist), GFP_KERNEL);
-	if (!blacklist)
+	blocklist = kcalloc(blocklist_len, sizeof(*blocklist), GFP_KERNEL);
+	if (!blocklist)
 		return -ENOMEM;
 
 	profile_cfg_v1 = kzalloc(profile_cfg_size, GFP_KERNEL);
 	if (!profile_cfg_v1) {
 		ret = -ENOMEM;
-		goto free_blacklist;
+		goto free_blocklist;
 	}
 
-	cmd.data[0] = blacklist;
-	cmd.len[0] = sizeof(*blacklist) * blacklist_len;
+	cmd.data[0] = blocklist;
+	cmd.len[0] = sizeof(*blocklist) * blocklist_len;
 	cmd.data[1] = profile_cfg_v1;
 
 	/* if max_profile is MAX_PROFILES_V2, we have the new API */
@@ -613,7 +560,7 @@ iwl_mvm_config_sched_scan_profiles(struct iwl_mvm *mvm,
 		data = &profile_cfg_v1->data;
 	}
 
-	/* No blacklist configuration */
+	/* No blocklist configuration */
 	data->num_profiles = req->n_match_sets;
 	data->active_clients = SCAN_CLIENT_SCHED_SCAN;
 	data->pass_match = SCAN_CLIENT_SCHED_SCAN;
@@ -637,8 +584,8 @@ iwl_mvm_config_sched_scan_profiles(struct iwl_mvm *mvm,
 
 	ret = iwl_mvm_send_cmd(mvm, &cmd);
 	kfree(profile_cfg_v1);
-free_blacklist:
-	kfree(blacklist);
+free_blocklist:
+	kfree(blocklist);
 
 	return ret;
 }
@@ -696,14 +643,28 @@ static void iwl_mvm_scan_fill_tx_cmd(struct iwl_mvm *mvm,
 	tx_cmd[0].rate_n_flags = iwl_mvm_scan_rate_n_flags(mvm,
 							   NL80211_BAND_2GHZ,
 							   no_cck);
-	tx_cmd[0].sta_id = mvm->aux_sta.sta_id;
+
+	if (iwl_fw_lookup_cmd_ver(mvm->fw, LONG_GROUP,
+				  ADD_STA,
+				  0) < 12) {
+		tx_cmd[0].sta_id = mvm->aux_sta.sta_id;
+		tx_cmd[1].sta_id = mvm->aux_sta.sta_id;
+
+	/*
+	 * Fw doesn't use this sta anymore, pending deprecation via HOST API
+	 * change
+	 */
+	} else {
+		tx_cmd[0].sta_id = 0xff;
+		tx_cmd[1].sta_id = 0xff;
+	}
 
 	tx_cmd[1].tx_flags = cpu_to_le32(TX_CMD_FLG_SEQ_CTL |
 					 TX_CMD_FLG_BT_DIS);
+
 	tx_cmd[1].rate_n_flags = iwl_mvm_scan_rate_n_flags(mvm,
 							   NL80211_BAND_5GHZ,
 							   no_cck);
-	tx_cmd[1].sta_id = mvm->aux_sta.sta_id;
 }
 
 static void
@@ -1115,6 +1076,10 @@ static void iwl_mvm_fill_scan_config_v1(struct iwl_mvm *mvm, void *config,
 
 	memcpy(&cfg->mac_addr, &mvm->addresses[0].addr, ETH_ALEN);
 
+	/* This function should not be called when using ADD_STA ver >=12 */
+	WARN_ON_ONCE(iwl_fw_lookup_cmd_ver(mvm->fw, LONG_GROUP,
+					   ADD_STA, 0) >= 12);
+
 	cfg->bcast_sta_id = mvm->aux_sta.sta_id;
 	cfg->channel_flags = channel_flags;
 
@@ -1162,6 +1127,10 @@ static void iwl_mvm_fill_scan_config_v2(struct iwl_mvm *mvm, void *config,
 	iwl_mvm_fill_scan_dwell(mvm, &cfg->dwell);
 
 	memcpy(&cfg->mac_addr, &mvm->addresses[0].addr, ETH_ALEN);
+
+	/* This function should not be called when using ADD_STA ver >=12 */
+	WARN_ON_ONCE(iwl_fw_lookup_cmd_ver(mvm->fw, LONG_GROUP,
+					   ADD_STA, 0) >= 12);
 
 	cfg->bcast_sta_id = mvm->aux_sta.sta_id;
 	cfg->channel_flags = channel_flags;
@@ -1276,7 +1245,18 @@ int iwl_mvm_config_scan(struct iwl_mvm *mvm)
 
 	memset(&cfg, 0, sizeof(cfg));
 
-	cfg.bcast_sta_id = mvm->aux_sta.sta_id;
+	if (iwl_fw_lookup_cmd_ver(mvm->fw, LONG_GROUP,
+				  ADD_STA, 0) < 12) {
+		cfg.bcast_sta_id = mvm->aux_sta.sta_id;
+	} else if (iwl_fw_lookup_cmd_ver(mvm->fw, LONG_GROUP,
+					 SCAN_CFG_CMD, 0) < 5) {
+		/*
+		 * Fw doesn't use this sta anymore. Deprecated on SCAN_CFG_CMD
+		 * version 5.
+		 */
+		cfg.bcast_sta_id = 0xff;
+	}
+
 	cfg.tx_chains = cpu_to_le32(iwl_mvm_get_valid_tx_ant(mvm));
 	cfg.rx_chains = cpu_to_le32(iwl_mvm_scan_rx_ant(mvm));
 
@@ -1649,7 +1629,7 @@ iwl_mvm_umac_scan_cfg_channels_v6(struct iwl_mvm *mvm,
 		struct iwl_scan_channel_cfg_umac *cfg = &cp->channel_config[i];
 		u32 n_aps_flag =
 			iwl_mvm_scan_ch_n_aps_flag(vif_type,
-						   cfg->v2.channel_num);
+						   channels[i]->hw_value);
 
 		cfg->flags = cpu_to_le32(flags | n_aps_flag);
 		cfg->v2.channel_num = channels[i]->hw_value;
@@ -1677,6 +1657,12 @@ static u8 iwl_mvm_scan_umac_chan_flags_v2(struct iwl_mvm *mvm,
 		flags |= IWL_SCAN_CHANNEL_FLAG_EBS_FRAG;
 
 	return flags;
+}
+
+static void iwl_mvm_scan_6ghz_passive_scan(struct iwl_mvm *mvm,
+					   struct iwl_mvm_scan_params *params,
+					   struct ieee80211_vif *vif)
+{
 }
 
 static u16 iwl_mvm_scan_umac_flags_v2(struct iwl_mvm *mvm,
@@ -1897,8 +1883,10 @@ static int iwl_mvm_scan_umac(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 
 	ret = iwl_mvm_fill_scan_sched_params(params, tail_v2->schedule,
 					     &tail_v2->delay);
-	if (ret)
+	if (ret) {
+		mvm->scan_uid_status[uid] = 0;
 		return ret;
+	}
 
 	if (iwl_mvm_is_scan_ext_chan_supported(mvm)) {
 		tail_v2->preq = params->preq;
@@ -1988,6 +1976,7 @@ iwl_mvm_scan_umac_fill_ch_p_v6(struct iwl_mvm *mvm,
 					  params->n_channels,
 					  channel_cfg_flags,
 					  vif->type);
+
 }
 
 static int iwl_mvm_scan_umac_v12(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
@@ -2009,9 +1998,9 @@ static int iwl_mvm_scan_umac_v12(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 					     &scan_p->general_params,
 					     gen_flags);
 
-	 ret = iwl_mvm_fill_scan_sched_params(params,
-					      scan_p->periodic_params.schedule,
-					      &scan_p->periodic_params.delay);
+	ret = iwl_mvm_fill_scan_sched_params(params,
+					     scan_p->periodic_params.schedule,
+					     &scan_p->periodic_params.delay);
 	if (ret)
 		return ret;
 
@@ -2042,9 +2031,9 @@ static int iwl_mvm_scan_umac_v14(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 					     &scan_p->general_params,
 					     gen_flags);
 
-	 ret = iwl_mvm_fill_scan_sched_params(params,
-					      scan_p->periodic_params.schedule,
-					      &scan_p->periodic_params.delay);
+	ret = iwl_mvm_fill_scan_sched_params(params,
+					     scan_p->periodic_params.schedule,
+					     &scan_p->periodic_params.delay);
 	if (ret)
 		return ret;
 
@@ -2120,7 +2109,7 @@ static int iwl_mvm_check_running_scans(struct iwl_mvm *mvm, int type)
 		/* Something is wrong if no scan was running but we
 		 * ran out of scans.
 		 */
-		/* fall through */
+		fallthrough;
 	default:
 		WARN_ON(1);
 		break;
@@ -2181,7 +2170,7 @@ static int iwl_mvm_build_scan_cmd(struct iwl_mvm *mvm,
 				  struct iwl_mvm_scan_params *params,
 				  int type)
 {
-	int uid, i;
+	int uid, i, err;
 	u8 scan_ver;
 
 	lockdep_assert_held(&mvm->mutex);
@@ -2213,7 +2202,11 @@ static int iwl_mvm_build_scan_cmd(struct iwl_mvm *mvm,
 		return ver_handler->handler(mvm, vif, params, type, uid);
 	}
 
-	return iwl_mvm_scan_umac(mvm, vif, params, type, uid);
+	err = iwl_mvm_scan_umac(mvm, vif, params, type, uid);
+	if (err)
+		return err;
+
+	return uid;
 }
 
 int iwl_mvm_reg_scan_start(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
@@ -2226,7 +2219,7 @@ int iwl_mvm_reg_scan_start(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 		.dataflags = { IWL_HCMD_DFL_NOCOPY, },
 	};
 	struct iwl_mvm_scan_params params = {};
-	int ret;
+	int ret, uid;
 	struct cfg80211_sched_scan_plan scan_plan = { .iterations = 1 };
 
 	lockdep_assert_held(&mvm->mutex);
@@ -2270,11 +2263,13 @@ int iwl_mvm_reg_scan_start(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 
 	iwl_mvm_build_scan_probe(mvm, vif, ies, &params);
 
-	ret = iwl_mvm_build_scan_cmd(mvm, vif, &hcmd, &params,
+	iwl_mvm_scan_6ghz_passive_scan(mvm, &params, vif);
+
+	uid = iwl_mvm_build_scan_cmd(mvm, vif, &hcmd, &params,
 				     IWL_MVM_SCAN_REGULAR);
 
-	if (ret)
-		return ret;
+	if (uid < 0)
+		return uid;
 
 	iwl_mvm_pause_tcm(mvm, false);
 
@@ -2286,6 +2281,7 @@ int iwl_mvm_reg_scan_start(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 		 */
 		IWL_ERR(mvm, "Scan failed! ret %d\n", ret);
 		iwl_mvm_resume_tcm(mvm);
+		mvm->scan_uid_status[uid] = 0;
 		return ret;
 	}
 
@@ -2311,7 +2307,7 @@ int iwl_mvm_sched_scan_start(struct iwl_mvm *mvm,
 		.dataflags = { IWL_HCMD_DFL_NOCOPY, },
 	};
 	struct iwl_mvm_scan_params params = {};
-	int ret;
+	int ret, uid;
 
 	lockdep_assert_held(&mvm->mutex);
 
@@ -2369,10 +2365,10 @@ int iwl_mvm_sched_scan_start(struct iwl_mvm *mvm,
 
 	iwl_mvm_build_scan_probe(mvm, vif, ies, &params);
 
-	ret = iwl_mvm_build_scan_cmd(mvm, vif, &hcmd, &params, type);
+	uid = iwl_mvm_build_scan_cmd(mvm, vif, &hcmd, &params, type);
 
-	if (ret)
-		return ret;
+	if (uid < 0)
+		return uid;
 
 	ret = iwl_mvm_send_cmd(mvm, &hcmd);
 	if (!ret) {
@@ -2385,6 +2381,8 @@ int iwl_mvm_sched_scan_start(struct iwl_mvm *mvm,
 		 * should try to send the command again with different params.
 		 */
 		IWL_ERR(mvm, "Sched scan failed! ret %d\n", ret);
+		mvm->scan_uid_status[uid] = 0;
+		mvm->sched_scan_pass_all = SCHED_SCAN_PASS_ALL_DISABLED;
 	}
 
 	return ret;
@@ -2587,12 +2585,19 @@ void iwl_mvm_report_scan_aborted(struct iwl_mvm *mvm)
 				.aborted = true,
 			};
 
+			cancel_delayed_work(&mvm->scan_timeout_dwork);
+
 			ieee80211_scan_completed(mvm->hw, &info);
 			mvm->scan_uid_status[uid] = 0;
 		}
 		uid = iwl_mvm_scan_uid_by_status(mvm, IWL_MVM_SCAN_SCHED);
-		if (uid >= 0 && !mvm->fw_restart) {
-			ieee80211_sched_scan_stopped(mvm->hw);
+		if (uid >= 0) {
+			/* Sched scan will be restarted by mac80211 in
+			 * restart_hw, so do not report if FW is about to be
+			 * restarted.
+			 */
+			if (!mvm->fw_restart)
+				ieee80211_sched_scan_stopped(mvm->hw);
 			mvm->sched_scan_pass_all = SCHED_SCAN_PASS_ALL_DISABLED;
 			mvm->scan_uid_status[uid] = 0;
 		}
@@ -2622,6 +2627,7 @@ void iwl_mvm_report_scan_aborted(struct iwl_mvm *mvm)
 				.aborted = true,
 			};
 
+			cancel_delayed_work(&mvm->scan_timeout_dwork);
 			ieee80211_scan_completed(mvm->hw, &info);
 		}
 

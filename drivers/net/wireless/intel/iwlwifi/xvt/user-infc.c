@@ -1,65 +1,9 @@
-/******************************************************************************
- *
- * This file is provided under a dual BSD/GPLv2 license.  When using or
- * redistributing this file, you may do so under either license.
- *
- * GPL LICENSE SUMMARY
- *
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(C) 2015 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2007 - 2014, 2018 - 2020 Intel Corporation
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
- *
- * The full GNU General Public License is included in this distribution
- * in the file called COPYING.
- *
- * Contact Information:
- *  Intel Linux Wireless <linuxwifi@intel.com>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- * BSD LICENSE
- *
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(C) 2015 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2005 - 2014, 2018 - 2020 Intel Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- *  * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- *  * Neither the name Intel Corporation nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *****************************************************************************/
-
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
+/*
+ * Copyright (C) 2005-2014, 2018-2021 Intel Corporation
+ * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
+ * Copyright (C) 2015-2017 Intel Deutschland GmbH
+ */
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -76,6 +20,7 @@
 #include "iwl-trans.h"
 #include "iwl-op-mode.h"
 #include "iwl-phy-db.h"
+#include "iwl-nvm-parse.h"
 #include "xvt.h"
 #include "user-infc.h"
 #include "iwl-dnt-cfg.h"
@@ -84,6 +29,7 @@
 #include "fw/dbg.h"
 #include "fw/acpi.h"
 #include "fw/img.h"
+#include "fw/pnvm.h"
 
 #define XVT_UCODE_CALIB_TIMEOUT (CPTCFG_IWL_TIMEOUT_FACTOR * HZ)
 #define XVT_SCU_BASE	(0xe6a00000)
@@ -92,7 +38,7 @@
 #define XVT_SCU_SNUM3	(XVT_SCU_SNUM2 + 0x4)
 #define XVT_MAX_TX_COUNT (ULLONG_MAX)
 #define XVT_LMAC_0_STA_ID (0) /* must be aligned with station id added in USC */
-#define XVT_LMAC_1_STA_ID (3) /* must be aligned with station id added in USC */
+#define XVT_LMAC_1_STA_ID (2) /* must be aligned with station id added in USC */
 #define XVT_STOP_TX (IEEE80211_SCTL_FRAG + 1)
 
 void iwl_xvt_send_user_rx_notif(struct iwl_xvt *xvt,
@@ -107,6 +53,7 @@ void iwl_xvt_send_user_rx_notif(struct iwl_xvt *xvt,
 
 	switch (WIDE_ID(pkt->hdr.group_id, pkt->hdr.cmd)) {
 	case WIDE_ID(LONG_GROUP, GET_SET_PHY_DB_CMD):
+	case WIDE_ID(XVT_GROUP, GRP_XVT_GET_SET_PHY_DB_CMD):
 		iwl_xvt_user_send_notif(xvt, IWL_TM_USER_CMD_NOTIF_PHY_DB,
 					data, size, GFP_ATOMIC);
 		break;
@@ -1692,11 +1639,10 @@ static int iwl_xvt_allocate_dma(struct iwl_xvt *xvt,
 	}
 
 	xvt->dma_cpu_addr = dma_alloc_coherent(xvt->trans->dev, dma_req->size,
-					       &(xvt->dma_addr), GFP_KERNEL);
+					       &xvt->dma_addr, GFP_KERNEL);
 
-	if (!xvt->dma_cpu_addr) {
-		return false;
-	}
+	if (!xvt->dma_cpu_addr)
+		return -ENOMEM;
 
 	dma_res = kmalloc(sizeof(*dma_res), GFP_KERNEL);
 	if (!dma_res) {
@@ -1724,15 +1670,13 @@ static int iwl_xvt_get_dma(struct iwl_xvt *xvt,
 	struct iwl_xvt_get_dma *get_dma_resp;
 	u32 resp_size;
 
-	if (!xvt->dma_cpu_addr) {
+	if (!xvt->dma_cpu_addr)
 		return -ENOMEM;
-	}
 
 	resp_size = sizeof(*get_dma_resp) + xvt->dma_buffer_size;
 	get_dma_resp = kmalloc(resp_size, GFP_KERNEL);
-	if (!get_dma_resp) {
+	if (!get_dma_resp)
 		return -ENOMEM;
-	}
 
 	get_dma_resp->size = xvt->dma_buffer_size;
 	memcpy(get_dma_resp->data, xvt->dma_cpu_addr, xvt->dma_buffer_size);
@@ -1784,9 +1728,6 @@ static int iwl_xvt_get_mac_addr_info(struct iwl_xvt *xvt,
 				     struct iwl_tm_data *data_out)
 {
 	struct iwl_xvt_mac_addr_info *mac_addr_info;
-	u32 mac_addr0, mac_addr1;
-	__u8 temp_mac_addr[ETH_ALEN];
-	const u8 *hw_addr;
 
 	mac_addr_info = kzalloc(sizeof(*mac_addr_info), GFP_KERNEL);
 	if (!mac_addr_info)
@@ -1801,23 +1742,12 @@ static int iwl_xvt_get_mac_addr_info(struct iwl_xvt *xvt,
 			memcpy(mac_addr_info->mac_addr, xvt->nvm_mac_addr,
 			       sizeof(mac_addr_info->mac_addr));
 		} else {
-			/* read the mac address from WFMP registers */
-			mac_addr0 = iwl_read_umac_prph_no_grab(xvt->trans,
-							       WFMP_MAC_ADDR_0);
-			mac_addr1 = iwl_read_umac_prph_no_grab(xvt->trans,
-							       WFMP_MAC_ADDR_1);
-
-			hw_addr = (const u8 *)&mac_addr0;
-			temp_mac_addr[0] = hw_addr[3];
-			temp_mac_addr[1] = hw_addr[2];
-			temp_mac_addr[2] = hw_addr[1];
-			temp_mac_addr[3] = hw_addr[0];
-
-			hw_addr = (const u8 *)&mac_addr1;
-			temp_mac_addr[4] = hw_addr[1];
-			temp_mac_addr[5] = hw_addr[0];
-
-			memcpy(mac_addr_info->mac_addr, temp_mac_addr,
+			const __le16 *dummy_nvm_section = page_address(ZERO_PAGE(0));
+			struct iwl_nvm_data *data = iwl_parse_nvm_data
+				(xvt->trans, xvt->cfg, xvt->fw,
+				NULL, dummy_nvm_section, NULL, dummy_nvm_section,
+				NULL, dummy_nvm_section, 0, 0);
+			memcpy(mac_addr_info->mac_addr, data->hw_addr,
 			       sizeof(mac_addr_info->mac_addr));
 		}
 	}
@@ -2060,6 +1990,117 @@ out_free:
 	return err;
 }
 
+static int iwl_xvt_get_fw_tlv(struct iwl_xvt *xvt,
+			      u32 img_id,
+			      u32 tlv_id,
+			      const u8 **out_tlv_data,
+			      u32 *out_tlv_len)
+{
+	int err = 0;
+
+	switch (tlv_id) {
+	case IWL_UCODE_TLV_CMD_VERSIONS:
+		*out_tlv_data = (const u8 *)xvt->fw->ucode_capa.cmd_versions;
+		*out_tlv_len = xvt->fw->ucode_capa.n_cmd_versions *
+			sizeof(struct iwl_fw_cmd_version);
+		break;
+
+	case IWL_UCODE_TLV_PHY_INTEGRATION_VERSION:
+		*out_tlv_data = xvt->fw->phy_integration_ver;
+		*out_tlv_len = xvt->fw->phy_integration_ver_len;
+		break;
+
+	default:
+		IWL_ERR(xvt, "TLV type not supported, type = %u\n", tlv_id);
+
+		*out_tlv_data = NULL;
+		*out_tlv_len = 0;
+		err = -EOPNOTSUPP;
+	}
+
+	return err;
+}
+
+static int iwl_xvt_handle_get_fw_tlv_len(struct iwl_xvt *xvt,
+					 struct iwl_tm_data *data_in,
+					 struct iwl_tm_data *data_out)
+{
+	struct iwl_xvt_get_fw_tlv_len_request *req = data_in->data;
+	struct iwl_xvt_fw_tlv_len_response *resp;
+	const u8 *tlv_data;
+	u32 tlv_len;
+	int err = 0;
+
+	IWL_DEBUG_INFO(xvt, "handle get fw tlv len, type = %u\n",
+		       req->tlv_type_id);
+
+	err = iwl_xvt_get_fw_tlv(xvt, req->fw_img_type, req->tlv_type_id,
+				 &tlv_data, &tlv_len);
+	if (err)
+		return err;
+
+	resp = kzalloc(sizeof(*resp), GFP_KERNEL);
+	if (!resp)
+		return -ENOMEM;
+
+	resp->bytes_len = tlv_len;
+
+	data_out->len = sizeof(*resp);
+	data_out->data = resp;
+
+	return 0;
+}
+
+static int iwl_xvt_handle_get_fw_tlv_data(struct iwl_xvt *xvt,
+					  struct iwl_tm_data *data_in,
+					  struct iwl_tm_data *data_out)
+{
+	struct iwl_xvt_get_fw_tlv_data_request *req = data_in->data;
+	struct iwl_xvt_fw_tlv_data_response *resp;
+	const u8 *tlv_data;
+	u32 tlv_len;
+	int err;
+
+	IWL_DEBUG_INFO(xvt, "handle get fw tlv data, type = %u\n",
+		       req->tlv_type_id);
+
+	err = iwl_xvt_get_fw_tlv(xvt, req->fw_img_type, req->tlv_type_id,
+				 &tlv_data, &tlv_len);
+	if (err)
+		return err;
+
+	data_out->len = sizeof(*resp) + tlv_len;
+	resp = kzalloc(data_out->len, GFP_KERNEL);
+	if (!resp)
+		return -ENOMEM;
+
+	resp->bytes_len = tlv_len;
+	if (tlv_data)
+		memcpy(resp->data, tlv_data, tlv_len);
+
+	data_out->data = resp;
+
+	return 0;
+}
+
+static int iwl_xvt_handle_pnvm_get_file_name(struct iwl_xvt *xvt,
+					     struct iwl_tm_data *data_in,
+					     struct iwl_tm_data *data_out)
+{
+	struct iwl_xvt_pnvm_external_file_name *pnvm_name_resp;
+
+	pnvm_name_resp = kmalloc(sizeof(*pnvm_name_resp), GFP_KERNEL);
+	if (!pnvm_name_resp)
+		return -ENOMEM;
+
+	iwl_pnvm_get_fs_name(xvt->trans, pnvm_name_resp->name, sizeof(pnvm_name_resp->name));
+
+	data_out->len = strlen(pnvm_name_resp->name) + 1;
+	data_out->data = pnvm_name_resp;
+
+	return 0;
+}
+
 int iwl_xvt_user_cmd_execute(struct iwl_testmode *testmode, u32 cmd,
 			     struct iwl_tm_data *data_in,
 			     struct iwl_tm_data *data_out, bool *supported_cmd)
@@ -2152,6 +2193,18 @@ int iwl_xvt_user_cmd_execute(struct iwl_testmode *testmode, u32 cmd,
 		break;
 	case IWL_XVT_CMD_DRIVER_CMD:
 		ret = iwl_xvt_handle_driver_cmd(xvt, data_in, data_out);
+		break;
+
+	case IWL_XVT_CMD_FW_TLV_GET_LEN:
+		ret = iwl_xvt_handle_get_fw_tlv_len(xvt, data_in, data_out);
+		break;
+
+	case IWL_XVT_CMD_FW_TLV_GET_DATA:
+		ret = iwl_xvt_handle_get_fw_tlv_data(xvt, data_in, data_out);
+		break;
+
+	case IWL_XVT_CMD_PNVM_GET_EXTERNAL_FILE_NAME:
+		ret = iwl_xvt_handle_pnvm_get_file_name(xvt, data_in, data_out);
 		break;
 
 	default:

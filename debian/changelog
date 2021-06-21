@@ -1,3 +1,19 @@
+backport-iwlwifi-dkms (9340-0ubuntu1) impish; urgency=low
+
+  * New release
+    - upstream version 9340 commit c5c6a05cf2b59e. (LP: #1929180)
+
+  * ci: avoid duplicated pipelines
+
+  * debian/patches:
+    - update 0005-Makefile.kernel-pass-fno-stack-clash-protection-and-.patch
+    - drop 0006-backport-address-interface-change-in-linux-skbuff.h-.patch
+    - drop 0007-backport-netlink-remove-NLA_EXACT_LEN_WARN.patch
+    - drop 0008-Linux-5.10-redefine-kzfree-as-kfree_sensitive.patch
+    - drop 0009-Linux-5.10-use-NLA_POLICY_MIN_LEN.patch
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Mon, 21 Jun 2021 18:23:36 +0800
+
 backport-iwlwifi-dkms (8613-0ubuntu2) hirsute; urgency=medium
 
   * Linux 5.10 compatibility fixes

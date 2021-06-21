@@ -358,6 +358,14 @@ static inline void *backport___skb_push(struct sk_buff *skb, unsigned int len)
 }
 #define __skb_push LINUX_BACKPORT(__skb_push)
 
+static inline void *__skb_put_zero(struct sk_buff *skb, unsigned int len)
+{
+	void *tmp = __skb_put(skb, len);
+
+	memset(tmp, 0, len);
+	return tmp;
+}
+
 static inline void *skb_put_zero(struct sk_buff *skb, unsigned int len)
 {
 	void *tmp = skb_put(skb, len);
@@ -383,19 +391,25 @@ static inline void skb_put_u8(struct sk_buff *skb, u8 val)
 }
 #endif
 
+#if LINUX_VERSION_IS_LESS(4,20,0) && !LINUX_VERSION_IN_RANGE(4,19,10, 4,20,0)
+static inline void skb_mark_not_on_list(struct sk_buff *skb)
+{
+	skb->next = NULL;
+}
+
+static inline void skb_list_del_init(struct sk_buff *skb)
+{
+	__list_del_entry((struct list_head *)&skb->next);
+	skb_mark_not_on_list(skb);
+}
+#endif /* < 4.20 || 4.19.10 <= x < 4.20 */
+
 #if LINUX_VERSION_IS_LESS(4,20,0)
 static inline struct sk_buff *__skb_peek(const struct sk_buff_head *list_)
 {
 	return list_->next;
 }
 #endif
-
-#if LINUX_VERSION_IS_LESS(4,20,0) && !LINUX_VERSION_IN_RANGE(4,19,10, 4,20,0)
-static inline void skb_mark_not_on_list(struct sk_buff *skb)
-{
-	skb->next = NULL;
-}
-#endif /* < 4.20 || 4.19.10 <= x < 4.20 */
 
 #if LINUX_VERSION_IS_LESS(4,11,0)
 #define skb_mac_offset LINUX_BACKPORT(skb_mac_offset)
@@ -427,6 +441,13 @@ static inline void nf_reset_ct(struct sk_buff *skb)
 #define skb_list_walk_safe(first, skb, next_skb)				\
 	for ((skb) = (first), (next_skb) = (skb) ? (skb)->next : NULL; (skb); 	\
 	     (skb) = (next_skb), (next_skb) = (skb) ? (skb)->next : NULL)
+#endif
+
+#if LINUX_VERSION_IS_LESS(5,11,0)
+static inline u64 skb_get_kcov_handle(struct sk_buff *skb)
+{
+	return 0;
+}
 #endif
 
 #endif /* __BACKPORT_SKBUFF_H */
