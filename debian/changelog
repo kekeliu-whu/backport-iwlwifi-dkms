@@ -1,3 +1,10 @@
+backport-iwlwifi-dkms (9300-1) UNRELEASED; urgency=low
+
+  * New release
+    - upstream version 9300 commit be41fea5bec19d.
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Mon, 21 Jun 2021 18:12:37 +0800
+
 backport-iwlwifi-dkms (9257-1) UNRELEASED; urgency=low
 
   * New release
