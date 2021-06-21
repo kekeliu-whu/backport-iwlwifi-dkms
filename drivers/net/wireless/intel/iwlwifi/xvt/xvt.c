@@ -24,7 +24,6 @@
 
 #define DRV_DESCRIPTION	"Intel(R) xVT driver for Linux"
 MODULE_DESCRIPTION(DRV_DESCRIPTION);
-MODULE_AUTHOR(DRV_AUTHOR);
 MODULE_LICENSE("GPL");
 
 #define TX_QUEUE_CFG_TID (6)
@@ -190,7 +189,8 @@ static struct iwl_op_mode *iwl_xvt_start(struct iwl_trans *trans,
 	xvt->trans = trans;
 	xvt->dev = trans->dev;
 
-	iwl_fw_runtime_init(&xvt->fwrt, trans, fw, NULL, NULL, dbgfs_dir);
+	iwl_fw_runtime_init(&xvt->fwrt, trans, fw, NULL, NULL,
+			    NULL, NULL, dbgfs_dir);
 
 	mutex_init(&xvt->mutex);
 	spin_lock_init(&xvt->notif_lock);
