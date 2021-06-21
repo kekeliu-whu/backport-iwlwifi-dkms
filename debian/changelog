@@ -7,6 +7,7 @@ backport-iwlwifi-dkms (9257-0ubuntu1) impish; urgency=low
   * debian/patches:
     - drop 0006-backport-address-interface-change-in-linux-skbuff.h-.patch
     - update 0005-Makefile.kernel-pass-fno-stack-clash-protection-and-.patch
+    - add 0006-NOUPSTREAM-mac80211-include-linux-kcov.h.patch
 
  -- You-Sheng Yang <vicamo@gmail.com>  Thu, 17 Jun 2021 15:11:36 +0800
 
