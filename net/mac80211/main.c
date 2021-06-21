@@ -258,13 +258,13 @@ static void ieee80211_restart_work(struct work_struct *work)
 	flush_work(&local->sched_scan_stopped_work);
 	flush_work(&local->radar_detected_work);
 
-	WARN(test_bit(SCAN_HW_SCANNING, &local->scanning),
-	     "%s called with hardware scan in progress\n", __func__);
-
-	flush_work(&local->radar_detected_work);
 	/* we might do interface manipulations, so need both */
 	rtnl_lock();
 	wiphy_lock(local->hw.wiphy);
+
+	WARN(test_bit(SCAN_HW_SCANNING, &local->scanning),
+	     "%s called with hardware scan in progress\n", __func__);
+
 	list_for_each_entry(sdata, &local->interfaces, list) {
 		/*
 		 * XXX: there may be more work for other vif types and even
@@ -1022,8 +1022,13 @@ int ieee80211_register_hw(struct ieee80211_hw *hw)
 		supp_ht = supp_ht || sband->ht_cap.ht_supported;
 		supp_vht = supp_vht || sband->vht_cap.vht_supported;
 
-		if (!supp_he)
-			supp_he = !!ieee80211_get_he_sta_cap(sband);
+		for (i = 0; i < sband->n_iftype_data; i++) {
+			const struct ieee80211_sband_iftype_data *iftd;
+
+			iftd = &sband->iftype_data[i];
+
+			supp_he = supp_he || (iftd && iftd->he_cap.has_he);
+		}
 
 		/* HT, VHT, HE require QoS, thus >= 4 queues */
 		if (WARN_ON(local->hw.queues < IEEE80211_NUM_ACS &&

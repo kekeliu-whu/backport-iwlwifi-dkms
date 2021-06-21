@@ -1,3 +1,13 @@
+backport-iwlwifi-dkms (9300-0ubuntu1) impish; urgency=low
+
+  * New release
+    - upstream version 9300 commit be41fea5bec19d.
+
+  * debian/patches:
+    - drop 0006-NOUPSTREAM-mac80211-include-linux-kcov.h.patch
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Mon, 21 Jun 2021 18:12:37 +0800
+
 backport-iwlwifi-dkms (9257-0ubuntu1) impish; urgency=low
 
   * New release
