@@ -2,3 +2,4 @@
 0002-fix-format-overflow-compile-error-in-kconf-confdata..patch
 0005-Makefile.kernel-pass-fno-stack-clash-protection-and-.patch
 0006-NOUPSTREAM-mac80211-include-linux-kcov.h.patch
+0007-backport-accommodate-to-thermal_notify_framework-dep.patch

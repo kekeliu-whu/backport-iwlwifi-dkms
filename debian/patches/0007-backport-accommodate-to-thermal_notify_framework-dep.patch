@@ -1,0 +1,33 @@
+From: You-Sheng Yang <vicamo.yang@canonical.com>
+Date: Mon, 21 Jun 2021 12:22:20 +0000
+Subject: backport: accommodate to thermal_notify_framework deprecation
+
+In kernel v5.13-rc1 commit 93effd83b692 ("iwlwifi: mvm: tt: Replace
+thermal_notify_framework"), thermal_notify_framework has been
+replaced by thermal_zone_device_update and removed in a subsequent
+commit d60d6e7adfc3 ("thermal/core: Remove
+thermal_notify_framework").
+
+Signed-off-by: You-Sheng Yang <vicamo.yang@canonical.com>
+---
+ drivers/net/wireless/intel/iwlwifi/mvm/tt.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/drivers/net/wireless/intel/iwlwifi/mvm/tt.c b/drivers/net/wireless/intel/iwlwifi/mvm/tt.c
+index b859e8c..e138e38 100644
+--- a/drivers/net/wireless/intel/iwlwifi/mvm/tt.c
++++ b/drivers/net/wireless/intel/iwlwifi/mvm/tt.c
+@@ -146,8 +146,13 @@ void iwl_mvm_temp_notif(struct iwl_mvm *mvm, struct iwl_rx_cmd_buffer *rxb)
+ 	if (mvm->tz_device.tzone) {
+ 		struct iwl_mvm_thermal_device *tz_dev = &mvm->tz_device;
+ 
++#if LINUX_VERSION_IS_LESS(5,13,0)
+ 		thermal_notify_framework(tz_dev->tzone,
+ 					 tz_dev->fw_trips_index[ths_crossed]);
++#else
++		thermal_zone_device_update(tz_dev->tzone,
++					   THERMAL_TRIP_VIOLATED);
++#endif
+ 	}
+ #endif /* CONFIG_THERMAL */
+ }
