@@ -32,10 +32,6 @@ static u8 rs_fw_set_active_chains(u8 chains)
 		fw_chains |= IWL_TLC_MNG_CHAIN_A_MSK;
 	if (chains & ANT_B)
 		fw_chains |= IWL_TLC_MNG_CHAIN_B_MSK;
-	if (chains & ANT_C)
-		WARN(false,
-		     "tlc offload doesn't support antenna C. chains: 0x%x\n",
-		     chains);
 
 	return fw_chains;
 }
@@ -314,7 +310,19 @@ void iwl_mvm_tlc_update_notif(struct iwl_mvm *mvm,
 
 	if (flags & IWL_TLC_NOTIF_FLAG_RATE) {
 		char pretty_rate[100];
+
+	if (iwl_fw_lookup_notif_ver(mvm->fw, DATA_PATH_GROUP,
+				    TLC_MNG_UPDATE_NOTIF, 0) < 3) {
+		rs_pretty_print_rate_v1(pretty_rate, sizeof(pretty_rate),
+					le32_to_cpu(notif->rate));
+		IWL_DEBUG_RATE(mvm,
+			       "Got rate in old format. Rate: %s. Converting.\n",
+			       pretty_rate);
+		lq_sta->last_rate_n_flags =
+			iwl_new_rate_from_v1(le32_to_cpu(notif->rate));
+	} else {
 		lq_sta->last_rate_n_flags = le32_to_cpu(notif->rate);
+	}
 		rs_pretty_print_rate(pretty_rate, sizeof(pretty_rate),
 				     lq_sta->last_rate_n_flags);
 		IWL_DEBUG_RATE(mvm, "new rate: %s\n", pretty_rate);
@@ -358,31 +366,6 @@ void iwl_mvm_tlc_update_notif(struct iwl_mvm *mvm,
 out:
 	rcu_read_unlock();
 }
-
-#if defined(CPTCFG_MAC80211_DEBUGFS) && \
-	defined(CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED)
-int iwl_rs_dhc_set_ampdu_size(struct ieee80211_sta *sta, u32 ampdu_size)
-{
-	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
-	struct iwl_lq_sta_rs_fw *lq_sta = &mvmsta->lq_sta.rs_fw;
-	struct iwl_mvm *mvm = lq_sta->pers.drv;
-
-	int ret = iwl_rs_send_dhc(mvm, lq_sta,
-				  IWL_TLC_DEBUG_AGG_FRAME_CNT_LIM,
-				  ampdu_size);
-	if (!ret)
-		return ret;
-
-	lq_sta->pers.dbg_agg_frame_count_lim = ampdu_size;
-
-	IWL_DEBUG_RATE(mvm, "sta_id ret: %d, %d agg_frame_cmdt_lim %d\n",
-		       ret,
-		       lq_sta->pers.sta_id,
-		       lq_sta->pers.dbg_agg_frame_count_lim);
-
-	return 0;
-}
-#endif /* CPTCFG_MAC80211_DEBUGFS */
 
 u16 rs_fw_get_max_amsdu_len(struct ieee80211_sta *sta)
 {
