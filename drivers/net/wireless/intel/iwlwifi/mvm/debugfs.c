@@ -469,10 +469,9 @@ static ssize_t iwl_dbgfs_rs_data_read(struct file *file, char __user *user_buf,
 			  "A-MPDU size limit %d\n",
 			  lq_sta->pers.dbg_agg_frame_count_lim);
 	desc += scnprintf(buff + desc, bufsz - desc,
-			  "valid_tx_ant %s%s%s\n",
+			  "valid_tx_ant %s%s\n",
 		(iwl_mvm_get_valid_tx_ant(mvm) & ANT_A) ? "ANT_A," : "",
-		(iwl_mvm_get_valid_tx_ant(mvm) & ANT_B) ? "ANT_B," : "",
-		(iwl_mvm_get_valid_tx_ant(mvm) & ANT_C) ? "ANT_C" : "");
+		(iwl_mvm_get_valid_tx_ant(mvm) & ANT_B) ? "ANT_B," : "");
 	desc += scnprintf(buff + desc, bufsz - desc,
 			  "last tx rate=0x%X ",
 			  lq_sta->last_rate_n_flags);
@@ -487,6 +486,46 @@ static ssize_t iwl_dbgfs_rs_data_read(struct file *file, char __user *user_buf,
 	kfree(buff);
 	return ret;
 }
+
+#ifdef CPTCFG_IWLWIFI_DHC
+static void iwl_rs_set_fixed_rate(struct iwl_mvm *mvm,
+				  struct iwl_lq_sta_rs_fw *lq_sta)
+{
+	int ret = iwl_rs_send_dhc(mvm, lq_sta,
+				  IWL_TLC_DEBUG_FIXED_RATE,
+				  lq_sta->pers.dbg_fixed_rate);
+
+	char pretty_rate[100];
+
+	if (ret) {
+		lq_sta->pers.dbg_fixed_rate = 0;
+		return;
+	}
+
+	rs_pretty_print_rate_v1(pretty_rate, sizeof(pretty_rate),
+				lq_sta->pers.dbg_fixed_rate);
+	IWL_DEBUG_RATE(mvm, "sta_id %d rate %s\n",
+		       lq_sta->pers.sta_id, pretty_rate);
+}
+
+static ssize_t iwl_dbgfs_fixed_rate_write(struct ieee80211_sta *sta,
+					  char *buf, size_t count,
+					  loff_t *ppos)
+{
+	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
+	struct iwl_lq_sta_rs_fw *lq_sta = &mvmsta->lq_sta.rs_fw;
+	struct iwl_mvm *mvm = lq_sta->pers.drv;
+	u32 parsed_rate;
+
+	if (kstrtou32(buf, 0, &parsed_rate))
+		lq_sta->pers.dbg_fixed_rate = 0;
+	else
+		lq_sta->pers.dbg_fixed_rate = parsed_rate;
+
+	iwl_rs_set_fixed_rate(mvm, lq_sta);
+	return count;
+}
+#endif /* CPTCFG_IWLWIFI_DHC */
 
 static ssize_t iwl_dbgfs_amsdu_len_write(struct ieee80211_sta *sta,
 					 char *buf, size_t count,
@@ -1060,8 +1099,8 @@ static ssize_t iwl_dbgfs_frame_stats_read(struct iwl_mvm *mvm,
 			continue;
 		pos += scnprintf(pos, endpos - pos, "Rate[%d]: ",
 				 (int)(ARRAY_SIZE(stats->last_rates) - i));
-		pos += rs_pretty_print_rate(pos, endpos - pos,
-					    stats->last_rates[idx]);
+		pos += rs_pretty_print_rate_v1(pos, endpos - pos,
+					       stats->last_rates[idx]);
 		if (pos < endpos - 1)
 			*pos++ = '\n';
 	}
@@ -1134,8 +1173,6 @@ iwl_dbgfs_scan_ant_rxchain_read(struct file *file,
 		pos += scnprintf(buf + pos, bufsz - pos, "A");
 	if (mvm->scan_rx_ant & ANT_B)
 		pos += scnprintf(buf + pos, bufsz - pos, "B");
-	if (mvm->scan_rx_ant & ANT_C)
-		pos += scnprintf(buf + pos, bufsz - pos, "C");
 	pos += scnprintf(buf + pos, bufsz - pos, " (%hhx)\n", mvm->scan_rx_ant);
 
 	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
@@ -1270,7 +1307,6 @@ static int _iwl_dbgfs_inject_beacon_ie(struct iwl_mvm *mvm, char *bin, int len)
 	struct ieee80211_tx_info *info;
 	struct iwl_mac_beacon_cmd beacon_cmd = {};
 	u8 rate;
-	u16 flags;
 	int i;
 
 	len /= 2;
@@ -1317,12 +1353,9 @@ static int _iwl_dbgfs_inject_beacon_ie(struct iwl_mvm *mvm, char *bin, int len)
 	mvmvif = iwl_mvm_vif_from_mac80211(vif);
 	info = IEEE80211_SKB_CB(beacon);
 	rate = iwl_mvm_mac_ctxt_get_lowest_rate(info, vif);
-	flags = iwl_mvm_mac80211_idx_to_hwrate(rate);
 
-	if (rate == IWL_FIRST_CCK_RATE)
-		flags |= IWL_MAC_BEACON_CCK;
-
-	beacon_cmd.flags = cpu_to_le16(flags);
+	beacon_cmd.flags =
+		cpu_to_le16(iwl_mvm_mac_ctxt_get_beacon_flags(mvm->fw, rate));
 	beacon_cmd.byte_cnt = cpu_to_le16((u16)beacon->len);
 	beacon_cmd.template_id = cpu_to_le32((u32)mvmvif->id);
 
@@ -2272,6 +2305,9 @@ MVM_DEBUGFS_READ_WRITE_FILE_OPS(bcast_filters_macs, 256);
 MVM_DEBUGFS_READ_FILE_OPS(sar_geo_profile);
 #endif
 
+#ifdef CPTCFG_IWLWIFI_DHC
+MVM_DEBUGFS_WRITE_STA_FILE_OPS(fixed_rate, 64);
+#endif
 MVM_DEBUGFS_READ_WRITE_STA_FILE_OPS(amsdu_len, 16);
 
 MVM_DEBUGFS_READ_WRITE_FILE_OPS(he_sniffer_params, 32);
@@ -2420,6 +2456,9 @@ void iwl_mvm_sta_add_debugfs(struct ieee80211_hw *hw,
 
 	if (iwl_mvm_has_tlc_offload(mvm)) {
 		MVM_DEBUGFS_ADD_STA_FILE(rs_data, dir, 0400);
+#ifdef CPTCFG_IWLWIFI_DHC
+		MVM_DEBUGFS_ADD_STA_FILE(fixed_rate, dir, 0200);
+#endif
 	}
 	MVM_DEBUGFS_ADD_STA_FILE(amsdu_len, dir, 0600);
 }
