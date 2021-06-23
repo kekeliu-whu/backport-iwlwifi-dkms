@@ -1,3 +1,9 @@
+backport-iwlwifi-dkms (8324-0ubuntu3~20.04.4) focal; urgency=medium
+
+  * Disable build against kernel newer than v5.4. (LP: #1932158)
+
+ -- You-Sheng Yang <vicamo.yang@canonical.com>  Wed, 23 Jun 2021 17:26:41 +0800
+
 backport-iwlwifi-dkms (8324-0ubuntu3~20.04.3) focal; urgency=medium
 
   * No change rebuild in security pocket. LP: #1914279.
