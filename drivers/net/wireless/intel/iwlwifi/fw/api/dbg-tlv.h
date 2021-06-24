@@ -245,7 +245,6 @@ struct iwl_fw_ini_hcmd_tlv {
 /**
 * struct iwl_fw_ini_conf_tlv - preset configuration TLV
 *
-* @hdr: debug header
 * @address: the base address
 * @value: value to set at address
 
@@ -260,7 +259,7 @@ struct iwl_fw_ini_addr_val {
  *
  * @hdr: debug header
  * @time_point: time point to apply config. One of &enum iwl_fw_ini_time_point
- * @settype: write access type preset token for time point.
+ * @set_type: write access type preset token for time point.
  *  one of &enum iwl_fw_ini_config_set_type
  * @addr_offset: the offset to add to any item in address[0] field
  * @addr_val: address value pair
@@ -273,9 +272,19 @@ struct iwl_fw_ini_conf_set_tlv {
 	struct iwl_fw_ini_addr_val addr_val[0];
 } __packed; /* FW_TLV_DEBUG_CONFIG_SET_API_S_VER_1 */
 
-/************************************************************************/
-/*  FW DEBUG APPLY CONFIGURATION SET                                    */
-/************************************************************************/
+/**
+ * enum iwl_fw_ini_config_set_type
+ *
+ * @IWL_FW_INI_CONFIG_SET_TYPE_INVALID: invalid config set
+ * @IWL_FW_INI_CONFIG_SET_TYPE_DEVICE_PERIPHERY_MAC: for PERIPHERY MAC configuration
+ * @IWL_FW_INI_CONFIG_SET_TYPE_DEVICE_PERIPHERY_PHY: for PERIPHERY PHY configuration
+ * @IWL_FW_INI_CONFIG_SET_TYPE_DEVICE_PERIPHERY_AUX: for PERIPHERY AUX configuration
+ * @IWL_FW_INI_CONFIG_SET_TYPE_DEVICE_MEMORY: for DEVICE MEMORY configuration
+ * @IWL_FW_INI_CONFIG_SET_TYPE_CSR: for CSR configuration
+ * @IWL_FW_INI_CONFIG_SET_TYPE_DBGC_DRAM_ADDR: for DBGC_DRAM_ADDR configuration
+ * @IWL_FW_INI_CONFIG_SET_TYPE_PERIPH_SCRATCH_HWM: for PERIPH SCRATCH HWM configuration
+ * @IWL_FW_INI_ALLOCATION_NUM: max number of configuration supported
+*/
 
 enum iwl_fw_ini_config_set_type {
 	IWL_FW_INI_CONFIG_SET_TYPE_INVALID = 0,

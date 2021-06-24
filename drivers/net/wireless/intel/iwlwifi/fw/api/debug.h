@@ -366,7 +366,9 @@ struct iwl_buf_alloc_cmd {
 
 /**
  * struct iwL_dram_info - DRAM fragments allocation struct
+ *
  * Driver will fill in the first 1K(+) of the pointed DRAM fragment
+ *
  * @first_word: magic word value
  * @second_word: magic word value
  * @framfrags: DRAM fragmentaion detail

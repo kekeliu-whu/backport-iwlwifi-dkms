@@ -414,7 +414,8 @@ nl80211_fils_discovery_policy[NL80211_FILS_DISCOVERY_ATTR_MAX + 1] = {
 	[NL80211_FILS_DISCOVERY_ATTR_INT_MIN] = NLA_POLICY_MAX(NLA_U32, 10000),
 	[NL80211_FILS_DISCOVERY_ATTR_INT_MAX] = NLA_POLICY_MAX(NLA_U32, 10000),
 #if LINUX_VERSION_IS_GEQ(5,10,0)
-	NLA_POLICY_BINARY_RANGE(NL80211_FILS_DISCOVERY_TMPL_MIN_LEN, IEEE80211_MAX_DATA_LEN),
+	[NL80211_FILS_DISCOVERY_ATTR_TMPL] =
+			NLA_POLICY_BINARY_RANGE(NL80211_FILS_DISCOVERY_TMPL_MIN_LEN, IEEE80211_MAX_DATA_LEN),
 #endif
 };
 
@@ -1751,6 +1752,11 @@ nl80211_send_iftype_data(struct sk_buff *msg,
 	    nla_put(msg, NL80211_BAND_IFTYPE_ATTR_HE_6GHZ_CAPA,
 		    sizeof(iftdata->he_6ghz_capa),
 		    &iftdata->he_6ghz_capa))
+		return -ENOBUFS;
+
+	if (iftdata->vendor_elems.data && iftdata->vendor_elems.len &&
+	    nla_put(msg, NL80211_BAND_IFTYPE_ATTR_VENDOR_ELEMS,
+		    iftdata->vendor_elems.len, iftdata->vendor_elems.data))
 		return -ENOBUFS;
 
 	return 0;
