@@ -1,3 +1,10 @@
+backport-iwlwifi-dkms (9340-0ubuntu4) impish; urgency=medium
+
+  * Bump OBSOLETE_BY from v5.4 to v5.14, as this is a much newer snapshot
+    than stuff that has shipped in v5.13. LP: #1932158
+
+ -- Dimitri John Ledkov <dimitri.ledkov@canonical.com>  Thu, 29 Jul 2021 15:47:52 +0100
+
 backport-iwlwifi-dkms (9340-0ubuntu3) impish; urgency=medium
 
   * Switch to dkms-autopkgtest from dkms package. (LP: #1932158)
