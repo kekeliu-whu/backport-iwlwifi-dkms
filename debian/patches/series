@@ -1,3 +1,4 @@
 0001-keep-zconf-in-make-clean.patch
 0002-fix-format-overflow-compile-error-in-kconf-confdata..patch
 0005-Makefile.kernel-pass-fno-stack-clash-protection-and-.patch
+0010-mei_cl_bus-fix-build-error-with-kernels-5.13.patch
