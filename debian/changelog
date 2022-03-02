@@ -1,3 +1,11 @@
+backport-iwlwifi-dkms (9340-0ubuntu2) jammy; urgency=medium
+
+  * Disable iwlmei for now
+    - add 0006-BUGFIX-NOUPSTREAM-iwlwifi-iwlmei-can-t-work-on-5.14.patch
+    - add 0007-BUGFIX-NOUPSTREAM-iwlwifi-iwlmei-isn-t-going-to-be-m.patch
+
+ -- You-Sheng Yang <vicamo.yang@canonical.com>  Wed, 02 Mar 2022 23:43:34 +0800
+
 backport-iwlwifi-dkms (9340-0ubuntu1) jammy; urgency=low
 
   * New release
