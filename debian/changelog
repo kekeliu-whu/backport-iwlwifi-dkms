@@ -1,4 +1,4 @@
-backport-iwlwifi-dkms (9340-0ubuntu1) impish; urgency=low
+backport-iwlwifi-dkms (9340-0ubuntu1) jammy; urgency=low
 
   * New release
     - upstream version 9340 commit c5c6a05cf2b59e.

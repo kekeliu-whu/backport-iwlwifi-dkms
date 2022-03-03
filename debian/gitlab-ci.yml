@@ -4,6 +4,6 @@ include:
   - https://gitlab.com/hustle-ci/pipeline/raw/master/pipeline-jobs.yml
 
 variables:
-  RELEASE: 'impish'
+  RELEASE: 'jammy'
   SALSA_CI_AUTOPKGTEST_ARGS: '--timeout-install=7200'
   SALSA_CI_DISABLE_APTLY: 'false'
