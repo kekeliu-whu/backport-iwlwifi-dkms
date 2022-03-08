@@ -1,3 +1,11 @@
+backport-iwlwifi-dkms (9580-0ubuntu1) impish; urgency=low
+
+  * New release
+    - refresh patches.
+    - upstream version 9580 commit a0a813b1546992.
+
+ -- You-Sheng Yang <vicamo@gmail.com>  Wed, 02 Mar 2022 14:57:14 +0800
+
 backport-iwlwifi-dkms (9340-0ubuntu1) impish; urgency=low
 
   * New release
