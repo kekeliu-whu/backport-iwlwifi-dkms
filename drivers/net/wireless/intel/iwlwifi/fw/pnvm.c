@@ -37,6 +37,7 @@ static int iwl_pnvm_handle_section(struct iwl_trans *trans, const u8 *data,
 	u32 sha1 = 0;
 	u16 mac_type = 0, rf_id = 0;
 	u8 *pnvm_data = NULL, *tmp;
+	bool hw_match = false;
 	u32 size = 0;
 	int ret;
 
@@ -83,6 +84,9 @@ static int iwl_pnvm_handle_section(struct iwl_trans *trans, const u8 *data,
 				break;
 			}
 
+			if (hw_match)
+				break;
+
 			mac_type = le16_to_cpup((__le16 *)data);
 			rf_id = le16_to_cpup((__le16 *)(data + sizeof(__le16)));
 
@@ -90,30 +94,9 @@ static int iwl_pnvm_handle_section(struct iwl_trans *trans, const u8 *data,
 				     "Got IWL_UCODE_TLV_HW_TYPE mac_type 0x%0x rf_id 0x%0x\n",
 				     mac_type, rf_id);
 
-			if (mac_type != CSR_HW_REV_TYPE(trans->hw_rev) ||
-			    rf_id != CSR_HW_RFID_TYPE(trans->hw_rf_id)) {
-				/*
-				 * Workaround: SOF needs to use the section
-				 *  marked as SO, so check if that's the case,
-				 * still making sure the rf_id matches.
-				 */
-				if (mac_type == IWL_CFG_MAC_TYPE_SO &&
-				    CSR_HW_REV_TYPE(trans->hw_rev) == IWL_CFG_MAC_TYPE_SOF &&
-				    rf_id == CSR_HW_RFID_TYPE(trans->hw_rf_id)) {
-					IWL_DEBUG_FW(trans,
-						     "mac_type 0x%0x is equivalent to mac_type 0x%0x, accept PNVM section.\n",
-						     CSR_HW_REV_TYPE(trans->hw_rev),
-						     mac_type);
-					break;
-				}
-
-				IWL_DEBUG_FW(trans,
-					     "HW mismatch, skipping PNVM section, mac_type 0x%0x, rf_id 0x%0x.\n",
-					     CSR_HW_REV_TYPE(trans->hw_rev), trans->hw_rf_id);
-				ret = -ENOENT;
-				goto out;
-			}
-
+			if (mac_type == CSR_HW_REV_TYPE(trans->hw_rev) &&
+			    rf_id == CSR_HW_RFID_TYPE(trans->hw_rf_id))
+				hw_match = true;
 			break;
 		case IWL_UCODE_TLV_SEC_RT: {
 			struct iwl_pnvm_section *section = (void *)data;
@@ -164,13 +147,22 @@ static int iwl_pnvm_handle_section(struct iwl_trans *trans, const u8 *data,
 	}
 
 done:
+	if (!hw_match) {
+		IWL_DEBUG_FW(trans,
+			     "HW mismatch, skipping PNVM section (need mac_type 0x%x rf_id 0x%x)\n",
+			     CSR_HW_REV_TYPE(trans->hw_rev),
+			     CSR_HW_RFID_TYPE(trans->hw_rf_id));
+		ret = -ENOENT;
+		goto out;
+	}
+
 	if (!size) {
 		IWL_DEBUG_FW(trans, "Empty PNVM, skipping.\n");
 		ret = -ENOENT;
 		goto out;
 	}
 
-	IWL_INFO(trans, "loaded PNVM version 0x%0x\n", sha1);
+	IWL_INFO(trans, "loaded PNVM version %08x\n", sha1);
 
 	ret = iwl_trans_set_pnvm(trans, pnvm_data, size);
 out:
@@ -239,6 +231,7 @@ static int iwl_pnvm_get_from_fs(struct iwl_trans *trans, u8 **data, size_t *len)
 {
 	const struct firmware *pnvm;
 	char pnvm_name[MAX_PNVM_NAME];
+	size_t new_len;
 	int ret;
 
 	iwl_pnvm_get_fs_name(trans, pnvm_name, sizeof(pnvm_name));
@@ -250,11 +243,14 @@ static int iwl_pnvm_get_from_fs(struct iwl_trans *trans, u8 **data, size_t *len)
 		return ret;
 	}
 
+	new_len = pnvm->size;
 	*data = kmemdup(pnvm->data, pnvm->size, GFP_KERNEL);
+	release_firmware(pnvm);
+
 	if (!*data)
 		return -ENOMEM;
 
-	*len = pnvm->size;
+	*len = new_len;
 
 	return 0;
 }
@@ -288,16 +284,19 @@ int iwl_pnvm_load(struct iwl_trans *trans,
 	/* First attempt to get the PNVM from BIOS */
 	package = iwl_uefi_get_pnvm(trans, &len);
 	if (!IS_ERR_OR_NULL(package)) {
-		data = kmemdup(package->data, len, GFP_KERNEL);
+		if (len >= sizeof(*package)) {
+			/* we need only the data */
+			len -= sizeof(*package);
+			data = kmemdup(package->data, len, GFP_KERNEL);
+		} else {
+			data = NULL;
+		}
 
 		/* free package regardless of whether kmemdup succeeded */
 		kfree(package);
 
-		if (data) {
-			/* we need only the data size */
-			len -= sizeof(*package);
+		if (data)
 			goto parse;
-		}
 	}
 
 	/* If it's not available, try from the filesystem */

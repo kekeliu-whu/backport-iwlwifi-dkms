@@ -6,6 +6,7 @@
  */
 #include <linux/etherdevice.h>
 #include <net/mac80211.h>
+#include <linux/crc32.h>
 
 #include "mvm.h"
 #include "fw/api/scan.h"
@@ -93,6 +94,10 @@ struct iwl_mvm_scan_params {
 	int n_scan_plans;
 	struct cfg80211_sched_scan_plan *scan_plans;
 	bool iter_notif;
+	struct cfg80211_scan_6ghz_params *scan_6ghz_params;
+	u32 n_6ghz_params;
+	bool scan_6ghz;
+	bool enable_6ghz_passive;
 };
 
 static inline void *iwl_mvm_get_scan_req_umac_data(struct iwl_mvm *mvm)
@@ -574,7 +579,9 @@ iwl_mvm_config_sched_scan_profiles(struct iwl_mvm *mvm,
 		profile->ssid_index = i;
 		/* Support any cipher and auth algorithm */
 		profile->unicast_cipher = 0xff;
-		profile->auth_alg = 0xff;
+		profile->auth_alg = IWL_AUTH_ALGO_UNSUPPORTED |
+			IWL_AUTH_ALGO_NONE | IWL_AUTH_ALGO_PSK | IWL_AUTH_ALGO_8021X |
+			IWL_AUTH_ALGO_SAE | IWL_AUTH_ALGO_8021X_SHA384 | IWL_AUTH_ALGO_OWE;
 		profile->network_type = IWL_NETWORK_TYPE_ANY;
 		profile->band_selection = IWL_SCAN_OFFLOAD_SELECT_ANY;
 		profile->client_bitmap = SCAN_CLIENT_SCHED_SCAN;
@@ -789,6 +796,12 @@ iwl_mvm_build_scan_probe(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 		cpu_to_le16(ies->len[NL80211_BAND_5GHZ]);
 	pos += ies->len[NL80211_BAND_5GHZ];
 
+	memcpy(pos, ies->ies[NL80211_BAND_6GHZ],
+	       ies->len[NL80211_BAND_6GHZ]);
+	params->preq.band_data[2].offset = cpu_to_le16(pos - params->preq.buf);
+	params->preq.band_data[2].len =
+		cpu_to_le16(ies->len[NL80211_BAND_6GHZ]);
+	pos += ies->len[NL80211_BAND_6GHZ];
 	memcpy(pos, ies->common_ies, ies->common_ie_len);
 	params->preq.common_data.offset = cpu_to_le16(pos - params->preq.buf);
 
@@ -1383,8 +1396,8 @@ static u32 iwl_mvm_scan_umac_ooc_priority(struct iwl_mvm_scan_params *params)
 }
 
 static void
-iwl_mvm_scan_umac_dwell_v10(struct iwl_mvm *mvm,
-			    struct iwl_scan_general_params_v10 *general_params,
+iwl_mvm_scan_umac_dwell_v11(struct iwl_mvm *mvm,
+			    struct iwl_scan_general_params_v11 *general_params,
 			    struct iwl_mvm_scan_params *params)
 {
 	struct iwl_mvm_scan_timing_params *timing, *hb_timing;
@@ -1462,6 +1475,14 @@ static const struct iwl_mvm_scan_channel_segment scan_channel_segments[] = {
 		.last_channel_id = 181,
 		.channel_spacing_shift = 2,
 		.band = PHY_BAND_5
+	},
+	{
+		.start_idx = 51,
+		.end_idx = 111,
+		.first_channel_id = 1,
+		.last_channel_id = 241,
+		.channel_spacing_shift = 2,
+		.band = PHY_BAND_6
 	},
 };
 
@@ -1634,10 +1655,230 @@ iwl_mvm_umac_scan_cfg_channels_v6(struct iwl_mvm *mvm,
 		cfg->flags = cpu_to_le32(flags | n_aps_flag);
 		cfg->v2.channel_num = channels[i]->hw_value;
 		cfg->v2.band = iwl_mvm_phy_band_from_nl80211(band);
+		if (cfg80211_channel_is_psc(channels[i]))
+			cfg->flags = 0;
 		cfg->v2.iter_count = 1;
 		cfg->v2.iter_interval = 0;
 	}
 }
+
+static int
+iwl_mvm_umac_scan_fill_6g_chan_list(struct iwl_mvm *mvm,
+				    struct iwl_mvm_scan_params *params,
+				     struct iwl_scan_probe_params_v4 *pp)
+{
+	int j, idex_s = 0, idex_b = 0;
+	struct cfg80211_scan_6ghz_params *scan_6ghz_params =
+		params->scan_6ghz_params;
+	bool hidden_supported = fw_has_capa(&mvm->fw->ucode_capa,
+					    IWL_UCODE_TLV_CAPA_HIDDEN_6GHZ_SCAN);
+
+	for (j = 0; j < params->n_ssids && idex_s < SCAN_SHORT_SSID_MAX_SIZE;
+	     j++) {
+		if (!params->ssids[j].ssid_len)
+			continue;
+
+		pp->short_ssid[idex_s] =
+			cpu_to_le32(~crc32_le(~0, params->ssids[j].ssid,
+					      params->ssids[j].ssid_len));
+
+		if (hidden_supported) {
+			pp->direct_scan[idex_s].id = WLAN_EID_SSID;
+			pp->direct_scan[idex_s].len = params->ssids[j].ssid_len;
+			memcpy(pp->direct_scan[idex_s].ssid, params->ssids[j].ssid,
+			       params->ssids[j].ssid_len);
+		}
+		idex_s++;
+	}
+
+	/*
+	 * Populate the arrays of the short SSIDs and the BSSIDs using the 6GHz
+	 * collocated parameters. This might not be optimal, as this processing
+	 * does not (yet) correspond to the actual channels, so it is possible
+	 * that some entries would be left out.
+	 *
+	 * TODO: improve this logic.
+	 */
+	for (j = 0; j < params->n_6ghz_params; j++) {
+		int k;
+
+		/* First, try to place the short SSID */
+		if (scan_6ghz_params[j].short_ssid_valid) {
+			for (k = 0; k < idex_s; k++) {
+				if (pp->short_ssid[k] ==
+				    cpu_to_le32(scan_6ghz_params[j].short_ssid))
+					break;
+			}
+
+			if (k == idex_s && idex_s < SCAN_SHORT_SSID_MAX_SIZE) {
+				pp->short_ssid[idex_s++] =
+					cpu_to_le32(scan_6ghz_params[j].short_ssid);
+			}
+		}
+
+		/* try to place BSSID for the same entry */
+		for (k = 0; k < idex_b; k++) {
+			if (!memcmp(&pp->bssid_array[k],
+				    scan_6ghz_params[j].bssid, ETH_ALEN))
+				break;
+		}
+
+		if (k == idex_b && idex_b < SCAN_BSSID_MAX_SIZE) {
+			memcpy(&pp->bssid_array[idex_b++],
+			       scan_6ghz_params[j].bssid, ETH_ALEN);
+		}
+	}
+
+	pp->short_ssid_num = idex_s;
+	pp->bssid_num = idex_b;
+	return 0;
+}
+
+/* TODO: this function can be merged with iwl_mvm_scan_umac_fill_ch_p_v6 */
+static void
+iwl_mvm_umac_scan_cfg_channels_v6_6g(struct iwl_mvm_scan_params *params,
+				     u32 n_channels,
+				     struct iwl_scan_probe_params_v4 *pp,
+				     struct iwl_scan_channel_params_v6 *cp,
+				     enum nl80211_iftype vif_type)
+{
+	struct iwl_scan_channel_cfg_umac *channel_cfg = cp->channel_config;
+	int i;
+	struct cfg80211_scan_6ghz_params *scan_6ghz_params =
+		params->scan_6ghz_params;
+
+	for (i = 0; i < params->n_channels; i++) {
+		struct iwl_scan_channel_cfg_umac *cfg =
+			&cp->channel_config[i];
+
+		u32 s_ssid_bitmap = 0, bssid_bitmap = 0, flags = 0;
+		u8 j, k, s_max = 0, b_max = 0, n_used_bssid_entries;
+		bool force_passive, found = false, allow_passive = true,
+		     unsolicited_probe_on_chan = false, psc_no_listen = false;
+
+		cfg->v1.channel_num = params->channels[i]->hw_value;
+		cfg->v2.band = 2;
+		cfg->v2.iter_count = 1;
+		cfg->v2.iter_interval = 0;
+
+		/*
+		 * The optimize the scan time, i.e., reduce the scan dwell time
+		 * on each channel, the below logic tries to set 3 direct BSSID
+		 * probe requests for each broadcast probe request with a short
+		 * SSID.
+		 * TODO: improve this logic
+		 */
+		n_used_bssid_entries = 3;
+		for (j = 0; j < params->n_6ghz_params; j++) {
+			if (!(scan_6ghz_params[j].channel_idx == i))
+				continue;
+
+			found = false;
+			unsolicited_probe_on_chan |=
+				scan_6ghz_params[j].unsolicited_probe;
+			psc_no_listen |= scan_6ghz_params[j].psc_no_listen;
+
+			for (k = 0; k < pp->short_ssid_num; k++) {
+				if (!scan_6ghz_params[j].unsolicited_probe &&
+				    le32_to_cpu(pp->short_ssid[k]) ==
+				    scan_6ghz_params[j].short_ssid) {
+					/* Relevant short SSID bit set */
+					if (s_ssid_bitmap & BIT(k)) {
+						found = true;
+						break;
+					}
+
+					/*
+					 * Use short SSID only to create a new
+					 * iteration during channel dwell or in
+					 * case that the short SSID has a
+					 * matching SSID, i.e., scan for hidden
+					 * APs.
+					 */
+					if (n_used_bssid_entries >= 3) {
+						s_ssid_bitmap |= BIT(k);
+						s_max++;
+						n_used_bssid_entries -= 3;
+						found = true;
+						break;
+					} else if (pp->direct_scan[k].len) {
+						s_ssid_bitmap |= BIT(k);
+						s_max++;
+						found = true;
+						allow_passive = false;
+						break;
+					}
+				}
+			}
+
+			if (found)
+				continue;
+
+			for (k = 0; k < pp->bssid_num; k++) {
+				if (!memcmp(&pp->bssid_array[k],
+					    scan_6ghz_params[j].bssid,
+					    ETH_ALEN)) {
+					if (!(bssid_bitmap & BIT(k))) {
+						bssid_bitmap |= BIT(k);
+						b_max++;
+						n_used_bssid_entries++;
+					}
+					break;
+				}
+			}
+		}
+
+		if (cfg80211_channel_is_psc(params->channels[i]) &&
+		    psc_no_listen)
+			flags |= IWL_UHB_CHAN_CFG_FLAG_PSC_CHAN_NO_LISTEN;
+
+		if (unsolicited_probe_on_chan)
+			flags |= IWL_UHB_CHAN_CFG_FLAG_UNSOLICITED_PROBE_RES;
+
+		/*
+		 * In the following cases apply passive scan:
+		 * 1. Non fragmented scan:
+		 *	- PSC channel with NO_LISTEN_FLAG on should be treated
+		 *	  like non PSC channel
+		 *	- Non PSC channel with more than 3 short SSIDs or more
+		 *	  than 9 BSSIDs.
+		 *	- Non PSC Channel with unsolicited probe response and
+		 *	  more than 2 short SSIDs or more than 6 BSSIDs.
+		 *	- PSC channel with more than 2 short SSIDs or more than
+		 *	  6 BSSIDs.
+		 * 3. Fragmented scan:
+		 *	- PSC channel with more than 1 SSID or 3 BSSIDs.
+		 *	- Non PSC channel with more than 2 SSIDs or 6 BSSIDs.
+		 *	- Non PSC channel with unsolicited probe response and
+		 *	  more than 1 SSID or more than 3 BSSIDs.
+		 */
+		if (!iwl_mvm_is_scan_fragmented(params->type)) {
+			if (!cfg80211_channel_is_psc(params->channels[i]) ||
+			    flags & IWL_UHB_CHAN_CFG_FLAG_PSC_CHAN_NO_LISTEN) {
+				force_passive = (s_max > 3 || b_max > 9);
+				force_passive |= (unsolicited_probe_on_chan &&
+						  (s_max > 2 || b_max > 6));
+			} else {
+				force_passive = (s_max > 2 || b_max > 6);
+			}
+		} else if (cfg80211_channel_is_psc(params->channels[i])) {
+			force_passive = (s_max > 1 || b_max > 3);
+		} else {
+			force_passive = (s_max > 2 || b_max > 6);
+			force_passive |= (unsolicited_probe_on_chan &&
+					  (s_max > 1 || b_max > 3));
+		}
+		if ((allow_passive && force_passive) ||
+		    (!(bssid_bitmap | s_ssid_bitmap) &&
+		     !cfg80211_channel_is_psc(params->channels[i])))
+			flags |= IWL_UHB_CHAN_CFG_FLAG_FORCE_PASSIVE;
+		else
+			flags |= bssid_bitmap | (s_ssid_bitmap << 16);
+
+		channel_cfg[i].flags |= cpu_to_le32(flags);
+	}
+}
+
 
 static u8 iwl_mvm_scan_umac_chan_flags_v2(struct iwl_mvm *mvm,
 					  struct iwl_mvm_scan_params *params,
@@ -1663,6 +1904,89 @@ static void iwl_mvm_scan_6ghz_passive_scan(struct iwl_mvm *mvm,
 					   struct iwl_mvm_scan_params *params,
 					   struct ieee80211_vif *vif)
 {
+	struct ieee80211_supported_band *sband =
+		&mvm->nvm_data->bands[NL80211_BAND_6GHZ];
+	u32 n_disabled, i;
+
+	params->enable_6ghz_passive = false;
+
+	if (params->scan_6ghz)
+		return;
+
+	if (!fw_has_capa(&mvm->fw->ucode_capa,
+			 IWL_UCODE_TLV_CAPA_PASSIVE_6GHZ_SCAN)) {
+		IWL_DEBUG_SCAN(mvm,
+			       "6GHz passive scan: Not supported by FW\n");
+		return;
+	}
+
+	/* 6GHz passive scan allowed only on station interface  */
+	if (vif->type != NL80211_IFTYPE_STATION) {
+		IWL_DEBUG_SCAN(mvm,
+			       "6GHz passive scan: not station interface\n");
+		return;
+	}
+
+	/*
+	 * 6GHz passive scan is allowed in a defined time interval following HW
+	 * reset or resume flow, or while not associated and a large interval
+	 * has passed since the last 6GHz passive scan.
+	 */
+	if ((vif->bss_conf.assoc ||
+	     time_after(mvm->last_6ghz_passive_scan_jiffies +
+			(IWL_MVM_6GHZ_PASSIVE_SCAN_TIMEOUT * HZ), jiffies)) &&
+	    (time_before(mvm->last_reset_or_resume_time_jiffies +
+			 (IWL_MVM_6GHZ_PASSIVE_SCAN_ASSOC_TIMEOUT * HZ),
+			 jiffies))) {
+		IWL_DEBUG_SCAN(mvm, "6GHz passive scan: %s\n",
+			       vif->bss_conf.assoc ? "associated" :
+			       "timeout did not expire");
+		return;
+	}
+
+	/* not enough channels in the regular scan request */
+	if (params->n_channels < IWL_MVM_6GHZ_PASSIVE_SCAN_MIN_CHANS) {
+		IWL_DEBUG_SCAN(mvm,
+			       "6GHz passive scan: not enough channels\n");
+		return;
+	}
+
+	for (i = 0; i < params->n_ssids; i++) {
+		if (!params->ssids[i].ssid_len)
+			break;
+	}
+
+	/* not a wildcard scan, so cannot enable passive 6GHz scan */
+	if (i == params->n_ssids) {
+		IWL_DEBUG_SCAN(mvm,
+			       "6GHz passive scan: no wildcard SSID\n");
+		return;
+	}
+
+	if (!sband || !sband->n_channels) {
+		IWL_DEBUG_SCAN(mvm,
+			       "6GHz passive scan: no 6GHz channels\n");
+		return;
+	}
+
+	for (i = 0, n_disabled = 0; i < sband->n_channels; i++) {
+		if (sband->channels[i].flags & (IEEE80211_CHAN_DISABLED))
+			n_disabled++;
+	}
+
+	/*
+	 * Not all the 6GHz channels are disabled, so no need for 6GHz passive
+	 * scan
+	 */
+	if (n_disabled != sband->n_channels) {
+		IWL_DEBUG_SCAN(mvm,
+			       "6GHz passive scan: 6GHz channels enabled\n");
+		return;
+	}
+
+	/* all conditions to enable 6ghz passive scan are satisfied */
+	IWL_DEBUG_SCAN(mvm, "6GHz passive scan: can be enabled\n");
+	params->enable_6ghz_passive = true;
 }
 
 static u16 iwl_mvm_scan_umac_flags_v2(struct iwl_mvm *mvm,
@@ -1672,8 +1996,16 @@ static u16 iwl_mvm_scan_umac_flags_v2(struct iwl_mvm *mvm,
 {
 	u16 flags = 0;
 
+	/*
+	 * If no direct SSIDs are provided perform a passive scan. Otherwise,
+	 * if there is a single SSID which is not the broadcast SSID, assume
+	 * that the scan is intended for roaming purposes and thus enable Rx on
+	 * all chains to improve chances of hearing the beacons/probe responses.
+	 */
 	if (params->n_ssids == 0)
 		flags |= IWL_UMAC_SCAN_GEN_FLAGS_V2_FORCE_PASSIVE;
+	else if (params->n_ssids == 1 && params->ssids[0].ssid_len)
+		flags |= IWL_UMAC_SCAN_GEN_FLAGS_V2_USE_ALL_RX_CHAINS;
 
 	if (iwl_mvm_is_scan_fragmented(params->type))
 		flags |= IWL_UMAC_SCAN_GEN_FLAGS_V2_FRAGMENTED_LMAC1;
@@ -1703,6 +2035,20 @@ static u16 iwl_mvm_scan_umac_flags_v2(struct iwl_mvm *mvm,
 
 	if (type == IWL_MVM_SCAN_SCHED || type == IWL_MVM_SCAN_NETDETECT)
 		flags |= IWL_UMAC_SCAN_GEN_FLAGS_V2_PREEMPTIVE;
+
+
+	if ((type == IWL_MVM_SCAN_SCHED || type == IWL_MVM_SCAN_NETDETECT) &&
+	    params->flags & NL80211_SCAN_FLAG_COLOCATED_6GHZ)
+		flags |= IWL_UMAC_SCAN_GEN_FLAGS_V2_TRIGGER_UHB_SCAN;
+
+	if (params->enable_6ghz_passive)
+		flags |= IWL_UMAC_SCAN_GEN_FLAGS_V2_6GHZ_PASSIVE_SCAN;
+
+	if (iwl_mvm_is_oce_supported(mvm) &&
+	    (params->flags & (NL80211_SCAN_FLAG_ACCEPT_BCAST_PROBE_RESP |
+			      NL80211_SCAN_FLAG_OCE_PROBE_REQ_HIGH_TX_RATE |
+			      NL80211_SCAN_FLAG_FILS_MAX_CHANNEL_TIME)))
+		flags |= IWL_UMAC_SCAN_GEN_FLAGS_V2_OCE;
 
 	return flags;
 }
@@ -1905,15 +2251,15 @@ static int iwl_mvm_scan_umac(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 }
 
 static void
-iwl_mvm_scan_umac_fill_general_p_v10(struct iwl_mvm *mvm,
+iwl_mvm_scan_umac_fill_general_p_v11(struct iwl_mvm *mvm,
 				     struct iwl_mvm_scan_params *params,
 				     struct ieee80211_vif *vif,
-				     struct iwl_scan_general_params_v10 *gp,
+				     struct iwl_scan_general_params_v11 *gp,
 				     u16 gen_flags)
 {
 	struct iwl_mvm_vif *scan_vif = iwl_mvm_vif_from_mac80211(vif);
 
-	iwl_mvm_scan_umac_dwell_v10(mvm, gp, params);
+	iwl_mvm_scan_umac_dwell_v11(mvm, gp, params);
 
 	gp->flags = cpu_to_le16(gen_flags);
 
@@ -1977,6 +2323,29 @@ iwl_mvm_scan_umac_fill_ch_p_v6(struct iwl_mvm *mvm,
 					  channel_cfg_flags,
 					  vif->type);
 
+	if (params->enable_6ghz_passive) {
+		struct ieee80211_supported_band *sband =
+			&mvm->nvm_data->bands[NL80211_BAND_6GHZ];
+		u32 i;
+
+		for (i = 0; i < sband->n_channels; i++) {
+			struct ieee80211_channel *channel =
+				&sband->channels[i];
+
+			struct iwl_scan_channel_cfg_umac *cfg =
+				&cp->channel_config[cp->count];
+
+			if (!cfg80211_channel_is_psc(channel))
+				continue;
+
+			cfg->flags = 0;
+			cfg->v2.channel_num = channel->hw_value;
+			cfg->v2.band = PHY_BAND_6;
+			cfg->v2.iter_count = 1;
+			cfg->v2.iter_interval = 0;
+			cp->count++;
+		}
+	}
 }
 
 static int iwl_mvm_scan_umac_v12(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
@@ -1994,7 +2363,7 @@ static int iwl_mvm_scan_umac_v12(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	cmd->uid = cpu_to_le32(uid);
 
 	gen_flags = iwl_mvm_scan_umac_flags_v2(mvm, params, vif, type);
-	iwl_mvm_scan_umac_fill_general_p_v10(mvm, params, vif,
+	iwl_mvm_scan_umac_fill_general_p_v11(mvm, params, vif,
 					     &scan_p->general_params,
 					     gen_flags);
 
@@ -2011,12 +2380,15 @@ static int iwl_mvm_scan_umac_v12(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	return 0;
 }
 
-static int iwl_mvm_scan_umac_v14(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
-				 struct iwl_mvm_scan_params *params, int type,
-				 int uid)
+static int iwl_mvm_scan_umac_v14_and_above(struct iwl_mvm *mvm,
+					   struct ieee80211_vif *vif,
+					   struct iwl_mvm_scan_params *params,
+					   int type, int uid, u32 version)
 {
-	struct iwl_scan_req_umac_v14 *cmd = mvm->scan_cmd;
-	struct iwl_scan_req_params_v14 *scan_p = &cmd->scan_params;
+	struct iwl_scan_req_umac_v15 *cmd = mvm->scan_cmd;
+	struct iwl_scan_req_params_v15 *scan_p = &cmd->scan_params;
+	struct iwl_scan_channel_params_v6 *cp = &scan_p->channel_params;
+	struct iwl_scan_probe_params_v4 *pb = &scan_p->probe_params;
 	int ret;
 	u16 gen_flags;
 	u32 bitmap_ssid = 0;
@@ -2027,7 +2399,7 @@ static int iwl_mvm_scan_umac_v14(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	cmd->uid = cpu_to_le32(uid);
 
 	gen_flags = iwl_mvm_scan_umac_flags_v2(mvm, params, vif, type);
-	iwl_mvm_scan_umac_fill_general_p_v10(mvm, params, vif,
+	iwl_mvm_scan_umac_fill_general_p_v11(mvm, params, vif,
 					     &scan_p->general_params,
 					     gen_flags);
 
@@ -2037,12 +2409,48 @@ static int iwl_mvm_scan_umac_v14(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	if (ret)
 		return ret;
 
+	if (!params->scan_6ghz) {
 	iwl_mvm_scan_umac_fill_probe_p_v4(params, &scan_p->probe_params,
 					  &bitmap_ssid);
 	iwl_mvm_scan_umac_fill_ch_p_v6(mvm, params, vif,
 				       &scan_p->channel_params, bitmap_ssid);
 
 	return 0;
+	} else {
+		pb->preq = params->preq;
+	}
+
+	cp->flags = iwl_mvm_scan_umac_chan_flags_v2(mvm, params, vif);
+	cp->n_aps_override[0] = IWL_SCAN_ADWELL_N_APS_GO_FRIENDLY;
+	cp->n_aps_override[1] = IWL_SCAN_ADWELL_N_APS_SOCIAL_CHS;
+
+	ret = iwl_mvm_umac_scan_fill_6g_chan_list(mvm, params, pb);
+	if (ret)
+		return ret;
+
+	iwl_mvm_umac_scan_cfg_channels_v6_6g(params,
+					     params->n_channels,
+					     pb, cp, vif->type);
+	cp->count = params->n_channels;
+	if (!params->n_ssids ||
+	    (params->n_ssids == 1 && !params->ssids[0].ssid_len))
+		cp->flags |= IWL_SCAN_CHANNEL_FLAG_6G_PSC_NO_FILTER;
+
+	return 0;
+}
+
+static int iwl_mvm_scan_umac_v14(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
+				 struct iwl_mvm_scan_params *params, int type,
+				 int uid)
+{
+	return iwl_mvm_scan_umac_v14_and_above(mvm, vif, params, type, uid, 14);
+}
+
+static int iwl_mvm_scan_umac_v15(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
+				 struct iwl_mvm_scan_params *params, int type,
+				 int uid)
+{
+	return iwl_mvm_scan_umac_v14_and_above(mvm, vif, params, type, uid, 15);
 }
 
 static int iwl_mvm_num_scans(struct iwl_mvm *mvm)
@@ -2160,6 +2568,7 @@ struct iwl_scan_umac_handler {
 
 static const struct iwl_scan_umac_handler iwl_scan_umac_handlers[] = {
 	/* set the newest version first to shorten the list traverse time */
+	IWL_SCAN_UMAC_HANDLER(15),
 	IWL_SCAN_UMAC_HANDLER(14),
 	IWL_SCAN_UMAC_HANDLER(12),
 };
@@ -2256,6 +2665,9 @@ int iwl_mvm_reg_scan_start(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	params.scan_plans = &scan_plan;
 	params.n_scan_plans = 1;
 
+	params.n_6ghz_params = req->n_6ghz_params;
+	params.scan_6ghz_params = req->scan_6ghz_params;
+	params.scan_6ghz = req->scan_6ghz;
 	iwl_mvm_fill_scan_type(mvm, &params, vif);
 
 	if (req->duration)
@@ -2289,6 +2701,9 @@ int iwl_mvm_reg_scan_start(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	mvm->scan_status |= IWL_MVM_SCAN_REGULAR;
 	mvm->scan_vif = iwl_mvm_vif_from_mac80211(vif);
 
+	if (params.enable_6ghz_passive)
+		mvm->last_6ghz_passive_scan_jiffies = jiffies;
+
 	schedule_delayed_work(&mvm->scan_timeout_dwork,
 			      msecs_to_jiffies(SCAN_TIMEOUT));
 
@@ -2308,6 +2723,8 @@ int iwl_mvm_sched_scan_start(struct iwl_mvm *mvm,
 	};
 	struct iwl_mvm_scan_params params = {};
 	int ret, uid;
+	int i, j;
+	bool non_psc_included = false;
 
 	lockdep_assert_held(&mvm->mutex);
 
@@ -2324,8 +2741,6 @@ int iwl_mvm_sched_scan_start(struct iwl_mvm *mvm,
 	if (WARN_ON(!mvm->scan_cmd))
 		return -ENOMEM;
 
-	if (!iwl_mvm_scan_fits(mvm, req->n_ssids, ies, req->n_channels))
-		return -ENOBUFS;
 
 	params.n_ssids = req->n_ssids;
 	params.flags = req->flags;
@@ -2365,8 +2780,43 @@ int iwl_mvm_sched_scan_start(struct iwl_mvm *mvm,
 
 	iwl_mvm_build_scan_probe(mvm, vif, ies, &params);
 
+	/* for 6 GHZ band only PSC channels need to be added */
+	for (i = 0; i < params.n_channels; i++) {
+		struct ieee80211_channel *channel = params.channels[i];
+
+		if (channel->band == NL80211_BAND_6GHZ &&
+		    !cfg80211_channel_is_psc(channel)) {
+			non_psc_included = true;
+			break;
+		}
+	}
+
+	if (non_psc_included) {
+		params.channels = kmemdup(params.channels,
+					  sizeof(params.channels[0]) *
+					  params.n_channels,
+					  GFP_KERNEL);
+		if (!params.channels)
+			return -ENOMEM;
+
+		for (i = j = 0; i < params.n_channels; i++) {
+			if (params.channels[i]->band == NL80211_BAND_6GHZ &&
+			    !cfg80211_channel_is_psc(params.channels[i]))
+				continue;
+			params.channels[j++] = params.channels[i];
+		}
+		params.n_channels = j;
+	}
+
+	if (non_psc_included &&
+	    !iwl_mvm_scan_fits(mvm, req->n_ssids, ies, params.n_channels)) {
+		kfree(params.channels);
+		return -ENOBUFS;
+	}
 	uid = iwl_mvm_build_scan_cmd(mvm, vif, &hcmd, &params, type);
 
+	if (non_psc_included)
+		kfree(params.channels);
 	if (uid < 0)
 		return uid;
 
@@ -2518,15 +2968,14 @@ static int iwl_mvm_scan_stop_wait(struct iwl_mvm *mvm, int type)
 				     1 * HZ);
 }
 
-#define IWL_SCAN_REQ_UMAC_HANDLE_SIZE(_ver) {				\
-	case (_ver): return sizeof(struct iwl_scan_req_umac_v##_ver);	\
-}
-
 static int iwl_scan_req_umac_get_size(u8 scan_ver)
 {
 	switch (scan_ver) {
-		IWL_SCAN_REQ_UMAC_HANDLE_SIZE(14);
-		IWL_SCAN_REQ_UMAC_HANDLE_SIZE(12);
+	case 12:
+		return sizeof(struct iwl_scan_req_umac_v12);
+	case 14:
+	case 15:
+		return sizeof(struct iwl_scan_req_umac_v15);
 	};
 
 	return 0;
