@@ -304,7 +304,13 @@ static inline bool backport_napi_complete_done(struct napi_struct *n, int work_d
 #endif /* < 3.19 */
 	return true;
 }
+
+static inline bool backport_napi_complete(struct napi_struct *n)
+{
+	return backport_napi_complete_done(n, 0);
+}
 #define napi_complete_done LINUX_BACKPORT(napi_complete_done)
+#define napi_complete LINUX_BACKPORT(napi_complete)
 #endif /* < 4.10 */
 
 #if LINUX_VERSION_IS_LESS(4,5,0)
@@ -359,11 +365,7 @@ static inline void netif_trans_update(struct net_device *dev)
 static inline int _bp_netdev_upper_dev_link(struct net_device *dev,
 					    struct net_device *upper_dev)
 {
-#if LINUX_VERSION_IS_LESS(3,9,0)
-	return 0;
-#else
 	return netdev_upper_dev_link(dev, upper_dev);
-#endif
 }
 #define netdev_upper_dev_link3(dev, upper, extack) \
 	netdev_upper_dev_link(dev, upper)
@@ -373,6 +375,18 @@ static inline int _bp_netdev_upper_dev_link(struct net_device *dev,
 	macro_dispatcher(netdev_upper_dev_link, __VA_ARGS__)(__VA_ARGS__)
 #endif
 
+#if LINUX_VERSION_IS_LESS(4,19,0)
+static inline void netif_receive_skb_list(struct sk_buff_head *head)
+{
+	struct sk_buff *skb, *next;
+
+	skb_queue_walk_safe(head, skb, next) {
+		__skb_unlink(skb, head);
+		netif_receive_skb(skb);
+	}
+}
+#endif
+
 #if LINUX_VERSION_IS_LESS(5,0,0)
 static inline int backport_dev_open(struct net_device *dev, struct netlink_ext_ack *extack)
 {
@@ -380,5 +394,47 @@ static inline int backport_dev_open(struct net_device *dev, struct netlink_ext_a
 }
 #define dev_open LINUX_BACKPORT(dev_open)
 #endif
+
+#if LINUX_VERSION_IS_LESS(4,4,0)
+#define netif_is_bridge_port LINUX_BACKPORT(netif_is_bridge_port)
+static inline bool netif_is_bridge_port(const struct net_device *dev)
+{
+	return dev->priv_flags & IFF_BRIDGE_PORT;
+}
+#endif
+
+#if LINUX_VERSION_IS_LESS(5,10,0)
+#define dev_fetch_sw_netstats LINUX_BACKPORT(dev_fetch_sw_netstats)
+void dev_fetch_sw_netstats(struct rtnl_link_stats64 *s,
+			   const struct pcpu_sw_netstats __percpu *netstats);
+
+#define netif_rx_any_context LINUX_BACKPORT(netif_rx_any_context)
+int netif_rx_any_context(struct sk_buff *skb);
+
+static inline void dev_sw_netstats_rx_add(struct net_device *dev, unsigned int len)
+{
+	struct pcpu_sw_netstats *tstats = this_cpu_ptr(dev->tstats);
+
+	u64_stats_update_begin(&tstats->syncp);
+	tstats->rx_bytes += len;
+	tstats->rx_packets++;
+	u64_stats_update_end(&tstats->syncp);
+}
+
+#endif /* < 5.10 */
+
+#if LINUX_VERSION_IS_LESS(5,11,0)
+static inline void dev_sw_netstats_tx_add(struct net_device *dev,
+					  unsigned int packets,
+					  unsigned int len)
+{
+	struct pcpu_sw_netstats *tstats = this_cpu_ptr(dev->tstats);
+
+	u64_stats_update_begin(&tstats->syncp);
+	tstats->tx_bytes += len;
+	tstats->tx_packets += packets;
+	u64_stats_update_end(&tstats->syncp);
+}
+#endif /* < 5.10 */
 
 #endif /* __BACKPORT_NETDEVICE_H */

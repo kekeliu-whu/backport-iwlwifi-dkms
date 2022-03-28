@@ -1,0 +1,2 @@
+# backport-iwlwifi is git-based with version string written in a "versions" file
+# that cannot currently be monitored by uscan.

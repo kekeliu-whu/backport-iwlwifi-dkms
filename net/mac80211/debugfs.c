@@ -4,7 +4,7 @@
  *
  * Copyright 2007	Johannes Berg <johannes@sipsolutions.net>
  * Copyright 2013-2015  Intel Mobile Communications GmbH
- * Copyright (C) 2018 - 2019 Intel Corporation
+ * Copyright (C) 2018 - 2019, 2021 Intel Corporation
  */
 
 #include <linux/debugfs.h>
@@ -16,471 +16,6 @@
 #include "debugfs.h"
 
 #define DEBUGFS_FORMAT_BUFFER_SIZE 100
-
-#ifdef CPTCFG_MAC80211_LATENCY_MEASUREMENTS
-#define TX_TIMING_STATS_BIN_DELIMTER_C ','
-#define TX_TIMING_STATS_BIN_DELIMTER_S ","
-#define TX_TIMING_STATS_BINS_DISABLED "enable(bins disabled)\n"
-#define TX_TIMING_STATS_DISABLED "disable\n"
-
-
-static ssize_t sta_tx_latency_points_read(struct file *file,
-					  char __user *userbuf,
-					  size_t count, loff_t *ppos)
-{
-	struct ieee80211_local *local = file->private_data;
-	struct ieee80211_tx_latency_bin_ranges  *tx_latency;
-	char buf[516];
-	int bufsz = sizeof(buf);
-	int pos = 0;
-
-	rcu_read_lock();
-	tx_latency = rcu_dereference(local->tx_latency);
-
-	/* Tx latency is not enabled or no thresholds were configured */
-	if (!tx_latency) {
-		pos += scnprintf(buf + pos, bufsz - pos, "%s\n",
-				TX_TIMING_STATS_DISABLED);
-		goto unlock;
-	}
-
-	pos += scnprintf(buf + pos, bufsz - pos, "start: %u\n",
-			 local->tx_msrmnt_points[0]);
-	pos += scnprintf(buf + pos, bufsz - pos, "end: %u\n",
-			 local->tx_msrmnt_points[1]);
-
-unlock:
-	rcu_read_unlock();
-	return simple_read_from_buffer(userbuf, count, ppos, buf, pos);
-}
-
-/*
- * Configure the Tx latency measuring points.
- *
- * In order to analyze the Tx latency there are 4 points that are of interest:
- * 1. Tx packet Enter the Kernel
- * 2. Tx packet is written to the bus
- * 3. Tx packet is acked by the AP
- * 4. Tx packet is erased.
- *
- * By default the measurement is done between points 1 to 4 (measure the whole
- * Tx flow). If one sees that the there is some problem with the Tx  latency,
- * he can try to focus the analysis to different parts of the Tx flow.
- *
- * Valid input is: a,b where
- * 1. a < b
- * 2. IEEE80211_TX_LAT_ENTER<=a
- * 3. b < IEEE80211_TX_LAT_MAX_POINT
- * 4. a & b are values from enum ieee80211_tx_lat_msr_point (0-3)
- */
-static ssize_t sta_tx_latency_points_write(struct file *file,
-					   const char __user *userbuf,
-					   size_t count, loff_t *ppos)
-{
-	struct ieee80211_local *local = file->private_data;
-	struct ieee80211_tx_latency_bin_ranges  *tx_latency;
-	int ret;
-	u32 start, end;
-
-	char buf[32] = {};
-
-	if (sizeof(buf) <= count)
-		return -EINVAL;
-
-	if (copy_from_user(buf, userbuf, count))
-		return -EFAULT;
-	ret = count;
-
-	if (sscanf(buf, "%u,%u", &start, &end) != 2 || end <= start ||
-	    IEEE80211_TX_LAT_MAX_POINT <= end)
-		return -EINVAL;
-
-	mutex_lock(&local->sta_mtx);
-
-	/* cannot change config once we have stations */
-	if (local->num_sta)
-		goto unlock;
-
-	tx_latency =
-		rcu_dereference_protected(local->tx_latency,
-					  lockdep_is_held(&local->sta_mtx));
-	/* Tx latency disabled */
-	if (!tx_latency)
-		goto unlock;
-
-	local->tx_msrmnt_points[0] = start;
-	local->tx_msrmnt_points[1] = end;
-
-	rcu_assign_pointer(local->tx_latency, tx_latency);
-unlock:
-	mutex_unlock(&local->sta_mtx);
-
-	return ret;
-}
-
-static const struct file_operations stats_tx_latency_points_ops = {
-	.write = sta_tx_latency_points_write,
-	.read = sta_tx_latency_points_read,
-	.open = simple_open,
-	.llseek = generic_file_llseek,
-};
-/*
- * Display if Tx latency statistics & bins are enabled/disabled
- */
-static ssize_t sta_tx_latency_stat_read(struct file *file,
-					char __user *userbuf,
-					size_t count, loff_t *ppos)
-{
-	struct ieee80211_local *local = file->private_data;
-	struct ieee80211_tx_latency_bin_ranges  *tx_latency;
-	char *buf;
-	int bufsz, i, ret;
-	int pos = 0;
-
-	rcu_read_lock();
-
-	tx_latency = rcu_dereference(local->tx_latency);
-
-	if (tx_latency && tx_latency->n_ranges) {
-		bufsz = tx_latency->n_ranges * 15;
-		buf = kzalloc(bufsz, GFP_ATOMIC);
-		if (!buf)
-			goto err;
-
-		for (i = 0; i < tx_latency->n_ranges; i++)
-			pos += scnprintf(buf + pos, bufsz - pos, "%d,",
-					 tx_latency->ranges[i]);
-		pos += scnprintf(buf + pos, bufsz - pos, "\n");
-	} else if (tx_latency) {
-		bufsz = sizeof(TX_TIMING_STATS_BINS_DISABLED) + 1;
-		buf = kzalloc(bufsz, GFP_ATOMIC);
-		if (!buf)
-			goto err;
-
-		pos += scnprintf(buf + pos, bufsz - pos, "%s\n",
-				 TX_TIMING_STATS_BINS_DISABLED);
-	} else {
-		bufsz = sizeof(TX_TIMING_STATS_DISABLED) + 1;
-		buf = kzalloc(bufsz, GFP_ATOMIC);
-		if (!buf)
-			goto err;
-
-		pos += scnprintf(buf + pos, bufsz - pos, "%s\n",
-				 TX_TIMING_STATS_DISABLED);
-	}
-
-	rcu_read_unlock();
-
-	ret = simple_read_from_buffer(userbuf, count, ppos, buf, pos);
-	kfree(buf);
-
-	return ret;
-err:
-	rcu_read_unlock();
-	return -ENOMEM;
-}
-
-/*
- * Receive input from user regarding Tx latency statistics
- * The input should indicate if Tx latency statistics and bins are
- * enabled/disabled.
- * If bins are enabled input should indicate the amount of different bins and
- * their ranges. Each bin will count how many Tx frames transmitted within the
- * appropriate latency.
- * Legal input is:
- * a) "enable(bins disabled)" - to enable only general statistics
- * b) "a,b,c,d,...z" - to enable general statistics and bins, where all are
- * numbers and a < b < c < d.. < z
- * c) "disable" - disable all statistics
- * NOTE: must configure Tx latency statistics bins before stations connected.
- */
-
-static ssize_t sta_tx_latency_stat_write(struct file *file,
-					 const char __user *userbuf,
-					 size_t count, loff_t *ppos)
-{
-	struct ieee80211_local *local = file->private_data;
-	char buf[128] = {};
-	char *bins = buf;
-	char *token;
-	int buf_size, i, alloc_size;
-	int prev_bin = 0;
-	int n_ranges = 0;
-	int ret = count;
-	struct ieee80211_tx_latency_bin_ranges  *tx_latency;
-
-	if (sizeof(buf) <= count)
-		return -EINVAL;
-	buf_size = count;
-	if (copy_from_user(buf, userbuf, buf_size))
-		return -EFAULT;
-
-	mutex_lock(&local->sta_mtx);
-
-	/* cannot change config once we have stations */
-	if (local->num_sta)
-		goto unlock;
-
-	tx_latency =
-		rcu_dereference_protected(local->tx_latency,
-					  lockdep_is_held(&local->sta_mtx));
-
-	/* disable Tx statistics */
-	if (!strcmp(buf, TX_TIMING_STATS_DISABLED)) {
-		if (!tx_latency)
-			goto unlock;
-		RCU_INIT_POINTER(local->tx_latency, NULL);
-		synchronize_rcu();
-		kfree(tx_latency);
-		goto unlock;
-	}
-
-	/* Tx latency already enabled */
-	if (tx_latency)
-		goto unlock;
-
-	if (strcmp(TX_TIMING_STATS_BINS_DISABLED, buf)) {
-		/* check how many bins and between what ranges user requested */
-		token = buf;
-		while (*token != '\0') {
-			if (*token == TX_TIMING_STATS_BIN_DELIMTER_C)
-				n_ranges++;
-			token++;
-		}
-		n_ranges++;
-	}
-
-	alloc_size = sizeof(struct ieee80211_tx_latency_bin_ranges) +
-		     n_ranges * sizeof(u32);
-	tx_latency = kzalloc(alloc_size, GFP_ATOMIC);
-	if (!tx_latency) {
-		ret = -ENOMEM;
-		goto unlock;
-	}
-	tx_latency->n_ranges = n_ranges;
-	for (i = 0; i < n_ranges; i++) { /* setting bin ranges */
-		token = strsep(&bins, TX_TIMING_STATS_BIN_DELIMTER_S);
-		sscanf(token, "%d", &tx_latency->ranges[i]);
-		/* bins values should be in ascending order */
-		if (prev_bin >= tx_latency->ranges[i]) {
-			ret = -EINVAL;
-			kfree(tx_latency);
-			goto unlock;
-		}
-		prev_bin = tx_latency->ranges[i];
-	}
-
-	/* set default measurement points */
-	local->tx_msrmnt_points[0] = IEEE80211_TX_LAT_ENTER;
-	local->tx_msrmnt_points[1] = IEEE80211_TX_LAT_DEL;
-
-	rcu_assign_pointer(local->tx_latency, tx_latency);
-
-unlock:
-	mutex_unlock(&local->sta_mtx);
-
-	return ret;
-}
-
-static const struct file_operations stats_tx_latency_ops = {
-	.write = sta_tx_latency_stat_write,
-	.read = sta_tx_latency_stat_read,
-	.open = simple_open,
-	.llseek = generic_file_llseek,
-};
-
-/*
- * Display if Tx consecutive loss statistics are enabled/disabled
- */
-static ssize_t sta_tx_consecutive_loss_read(struct file *file,
-					    char __user *userbuf,
-					    size_t count, loff_t *ppos)
-{
-	struct ieee80211_local *local = file->private_data;
-	struct ieee80211_tx_consec_loss_ranges  *tx_consec;
-	char *buf;
-	size_t bufsz, i;
-	int ret;
-	u32 pos = 0;
-
-	rcu_read_lock();
-
-	tx_consec = rcu_dereference(local->tx_consec);
-
-	if (tx_consec && tx_consec->n_ranges) { /* enabled */
-		bufsz = tx_consec->n_ranges * 16;
-		buf = kzalloc(bufsz, GFP_ATOMIC);
-		if (!buf)
-			goto err;
-
-		pos += scnprintf(buf, bufsz, "bins: ");
-		for (i = 0; i < tx_consec->n_ranges; i++)
-			pos += scnprintf(buf + pos, bufsz - pos, "%u,",
-					 tx_consec->ranges[i]);
-		pos += scnprintf(buf + pos, bufsz - pos,
-				 "\nlate threshold: %d\n",
-				 tx_consec->late_threshold);
-	} else { /* disabled */
-		bufsz = sizeof(TX_TIMING_STATS_DISABLED) + 1;
-		buf = kzalloc(bufsz, GFP_ATOMIC);
-		if (!buf)
-			goto err;
-
-		pos += scnprintf(buf + pos, bufsz - pos, "%s\n",
-				 TX_TIMING_STATS_DISABLED);
-	}
-
-	rcu_read_unlock();
-
-	ret = simple_read_from_buffer(userbuf, count, ppos, buf, pos);
-	kfree(buf);
-
-	return ret;
-err:
-	rcu_read_unlock();
-	return -ENOMEM;
-}
-
-/*
- * Receive input from user regarding Tx consecutive loss statistics
- * The input should indicate if Tx consecutive loss statistics are
- * enabled/disabled.
- * This entry keep track of 2 statistics to do with Tx consecutive loss:
- * 1) How many consecutive packets were lost within the bin ranges
- * 2) How many consecutive packets were sent successfully but the transmit
- * latency is greater than the late threshold, therefor considered lost.
- *
- * Legal input is:
- * a) "a,b,c,d,...z,threshold" - to enable consecutive loss statistics,
- * where all are numbers and a < b < c < d.. < z
- * b) "disable" - disable all statistics
- * NOTE:
- * 1) Must supply at least 2 values.
- * 2) Last value is always the late threshold.
- * 3) Must configure Tx consecutive loss statistics bins before stations
- * connected.
- */
-
-static ssize_t sta_tx_consecutive_loss_write(struct file *file,
-					     const char __user *userbuf,
-					     size_t count, loff_t *ppos)
-{
-	struct ieee80211_local *local = file->private_data;
-	char buf[128] = {};
-	char *bins = buf;
-	char *token;
-	u32 i, alloc_size;
-	u32 prev_bin = 0;
-	int n_ranges = 0;
-	int n_vals = 0;
-	int ret = count;
-	struct ieee80211_tx_consec_loss_ranges *tx_consec;
-
-	if (sizeof(buf) <= count)
-		return -EINVAL;
-
-	if (copy_from_user(buf, userbuf, count))
-		return -EFAULT;
-
-	mutex_lock(&local->sta_mtx);
-
-	/* cannot change config once we have stations */
-	if (local->num_sta)
-		goto unlock;
-
-	tx_consec =
-		rcu_dereference_protected(local->tx_consec,
-					  lockdep_is_held(&local->sta_mtx));
-
-	/* disable Tx statistics */
-	if (!strcmp(buf, TX_TIMING_STATS_DISABLED)) {
-		if (!tx_consec)
-			goto unlock;
-		rcu_assign_pointer(local->tx_consec, NULL);
-		synchronize_rcu();
-		kfree(tx_consec);
-		goto unlock;
-	}
-
-	/* Tx latency already enabled */
-	if (tx_consec)
-		goto unlock;
-
-	/* check how many bins and between what ranges user requested */
-	token = buf;
-	while (*token != '\0') {
-		if (*token == TX_TIMING_STATS_BIN_DELIMTER_C)
-			n_vals++;
-		token++;
-	}
-	n_vals++;
-	/* last value is for setting the late threshold */
-	n_ranges = n_vals - 1;
-
-	/*
-	 * user needs to enter at least 2 values, one for the threshold, and
-	 * one for the range
-	 */
-	if (n_vals < 2) {
-		ret = -EINVAL;
-		goto unlock;
-	}
-
-	alloc_size = sizeof(struct ieee80211_tx_consec_loss_ranges) +
-		     n_ranges * sizeof(u32);
-	tx_consec = kzalloc(alloc_size, GFP_ATOMIC);
-	if (!tx_consec) {
-		ret = -ENOMEM;
-		goto unlock;
-	}
-	tx_consec->n_ranges = n_ranges;
-	for (i = 0; i < n_vals; i++) { /* setting bin ranges */
-		token = strsep(&bins, TX_TIMING_STATS_BIN_DELIMTER_S);
-
-		if (i == n_vals - 1) { /* last value - late threshold */
-			ret = sscanf(token, "%d", &tx_consec->late_threshold);
-			if (ret != 1) {
-				ret = -EINVAL;
-				kfree(tx_consec);
-				goto unlock;
-			}
-			break;
-		}
-		ret = sscanf(token, "%d", &tx_consec->ranges[i]);
-		if (ret != 1) {
-			ret = -EINVAL;
-			kfree(tx_consec);
-			goto unlock;
-		}
-
-		/* bins values should be in ascending order */
-		if (prev_bin >= tx_consec->ranges[i]) {
-			ret = -EINVAL;
-			kfree(tx_consec);
-			goto unlock;
-		}
-		prev_bin = tx_consec->ranges[i];
-	}
-
-	/* set default measurement points */
-	local->tx_msrmnt_points[0] = IEEE80211_TX_LAT_ENTER;
-	local->tx_msrmnt_points[1] = IEEE80211_TX_LAT_DEL;
-
-	rcu_assign_pointer(local->tx_consec, tx_consec);
-
-unlock:
-	mutex_unlock(&local->sta_mtx);
-
-	return ret;
-}
-
-static const struct file_operations stats_tx_consecutive_loss_ops = {
-	.write = sta_tx_consecutive_loss_write,
-	.read = sta_tx_consecutive_loss_read,
-	.open = simple_open,
-	.llseek = generic_file_llseek,
-};
-#endif /* CPTCFG_MAC80211_LATENCY_MEASUREMENTS */
 
 int mac80211_format_buffer(char __user *userbuf, size_t count,
 				  loff_t *ppos, char *fmt, ...)
@@ -518,12 +53,14 @@ static const struct file_operations name## _ops = {			\
 	DEBUGFS_READONLY_FILE_OPS(name)
 
 #define DEBUGFS_ADD(name)						\
-	debugfs_create_file(#name, 0400, phyd, local, &name## _ops);
+	debugfs_create_file(#name, 0400, phyd, local, &name## _ops)
 
 #define DEBUGFS_ADD_MODE(name, mode)					\
 	debugfs_create_file(#name, mode, phyd, local, &name## _ops);
 
 
+DEBUGFS_READONLY_FILE(hw_conf, "%x",
+		      local->hw.conf.flags);
 DEBUGFS_READONLY_FILE(user_power, "%d",
 		      local->user_power_level);
 DEBUGFS_READONLY_FILE(power, "%d",
@@ -583,18 +120,17 @@ static ssize_t aqm_write(struct file *file,
 {
 	struct ieee80211_local *local = file->private_data;
 	char buf[100];
-	size_t len;
 
-	if (count > sizeof(buf))
+	if (count >= sizeof(buf))
 		return -EINVAL;
 
 	if (copy_from_user(buf, user_buf, count))
 		return -EFAULT;
 
-	buf[sizeof(buf) - 1] = '\0';
-	len = strlen(buf);
-	if (len > 0 && buf[len-1] == '\n')
-		buf[len-1] = 0;
+	if (count && buf[count - 1] == '\n')
+		buf[count - 1] = '\0';
+	else
+		buf[count] = '\0';
 
 	if (sscanf(buf, "fq_limit %u", &local->fq.limit) == 1)
 		return count;
@@ -612,6 +148,194 @@ static const struct file_operations aqm_ops = {
 	.open = simple_open,
 	.llseek = default_llseek,
 };
+
+static ssize_t airtime_flags_read(struct file *file,
+				  char __user *user_buf,
+				  size_t count, loff_t *ppos)
+{
+	struct ieee80211_local *local = file->private_data;
+	char buf[128] = {}, *pos, *end;
+
+	pos = buf;
+	end = pos + sizeof(buf) - 1;
+
+	if (local->airtime_flags & AIRTIME_USE_TX)
+		pos += scnprintf(pos, end - pos, "AIRTIME_TX\t(%lx)\n",
+				 AIRTIME_USE_TX);
+	if (local->airtime_flags & AIRTIME_USE_RX)
+		pos += scnprintf(pos, end - pos, "AIRTIME_RX\t(%lx)\n",
+				 AIRTIME_USE_RX);
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf,
+				       strlen(buf));
+}
+
+static ssize_t airtime_flags_write(struct file *file,
+				   const char __user *user_buf,
+				   size_t count, loff_t *ppos)
+{
+	struct ieee80211_local *local = file->private_data;
+	char buf[16];
+
+	if (count >= sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(buf, user_buf, count))
+		return -EFAULT;
+
+	if (count && buf[count - 1] == '\n')
+		buf[count - 1] = '\0';
+	else
+		buf[count] = '\0';
+
+	if (kstrtou16(buf, 0, &local->airtime_flags))
+		return -EINVAL;
+
+	return count;
+}
+
+static const struct file_operations airtime_flags_ops = {
+	.write = airtime_flags_write,
+	.read = airtime_flags_read,
+	.open = simple_open,
+	.llseek = default_llseek,
+};
+
+static ssize_t aql_txq_limit_read(struct file *file,
+				  char __user *user_buf,
+				  size_t count,
+				  loff_t *ppos)
+{
+	struct ieee80211_local *local = file->private_data;
+	char buf[400];
+	int len = 0;
+
+	len = scnprintf(buf, sizeof(buf),
+			"AC	AQL limit low	AQL limit high\n"
+			"VO	%u		%u\n"
+			"VI	%u		%u\n"
+			"BE	%u		%u\n"
+			"BK	%u		%u\n",
+			local->airtime[IEEE80211_AC_VO].aql_txq_limit_low,
+			local->airtime[IEEE80211_AC_VO].aql_txq_limit_high,
+			local->airtime[IEEE80211_AC_VI].aql_txq_limit_low,
+			local->airtime[IEEE80211_AC_VI].aql_txq_limit_high,
+			local->airtime[IEEE80211_AC_BE].aql_txq_limit_low,
+			local->airtime[IEEE80211_AC_BE].aql_txq_limit_high,
+			local->airtime[IEEE80211_AC_BK].aql_txq_limit_low,
+			local->airtime[IEEE80211_AC_BK].aql_txq_limit_high);
+	return simple_read_from_buffer(user_buf, count, ppos,
+				       buf, len);
+}
+
+static ssize_t aql_txq_limit_write(struct file *file,
+				   const char __user *user_buf,
+				   size_t count,
+				   loff_t *ppos)
+{
+	struct ieee80211_local *local = file->private_data;
+	char buf[100];
+	u32 ac, q_limit_low, q_limit_high, q_limit_low_old, q_limit_high_old;
+	struct sta_info *sta;
+
+	if (count >= sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(buf, user_buf, count))
+		return -EFAULT;
+
+	if (count && buf[count - 1] == '\n')
+		buf[count - 1] = '\0';
+	else
+		buf[count] = '\0';
+
+	if (sscanf(buf, "%u %u %u", &ac, &q_limit_low, &q_limit_high) != 3)
+		return -EINVAL;
+
+	if (ac >= IEEE80211_NUM_ACS)
+		return -EINVAL;
+
+	q_limit_low_old = local->airtime[ac].aql_txq_limit_low;
+	q_limit_high_old = local->airtime[ac].aql_txq_limit_high;
+
+	local->airtime[ac].aql_txq_limit_low = q_limit_low;
+	local->airtime[ac].aql_txq_limit_high = q_limit_high;
+
+	mutex_lock(&local->sta_mtx);
+	list_for_each_entry(sta, &local->sta_list, list) {
+		/* If a sta has customized queue limits, keep it */
+		if (sta->airtime[ac].aql_limit_low == q_limit_low_old &&
+		    sta->airtime[ac].aql_limit_high == q_limit_high_old) {
+			sta->airtime[ac].aql_limit_low = q_limit_low;
+			sta->airtime[ac].aql_limit_high = q_limit_high;
+		}
+	}
+	mutex_unlock(&local->sta_mtx);
+	return count;
+}
+
+static const struct file_operations aql_txq_limit_ops = {
+	.write = aql_txq_limit_write,
+	.read = aql_txq_limit_read,
+	.open = simple_open,
+	.llseek = default_llseek,
+};
+
+#if LINUX_VERSION_IS_GEQ(4,10,0)
+static ssize_t aql_enable_read(struct file *file, char __user *user_buf,
+			       size_t count, loff_t *ppos)
+{
+	char buf[3];
+	int len;
+
+	len = scnprintf(buf, sizeof(buf), "%d\n",
+			!static_key_false(&aql_disable.key));
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+}
+#endif
+
+#if LINUX_VERSION_IS_GEQ(4,10,0)
+static ssize_t aql_enable_write(struct file *file, const char __user *user_buf,
+				size_t count, loff_t *ppos)
+{
+	bool aql_disabled = static_key_false(&aql_disable.key);
+	char buf[3];
+	size_t len;
+
+	if (count > sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(buf, user_buf, count))
+		return -EFAULT;
+
+	buf[sizeof(buf) - 1] = '\0';
+	len = strlen(buf);
+	if (len > 0 && buf[len - 1] == '\n')
+		buf[len - 1] = 0;
+
+	if (buf[0] == '0' && buf[1] == '\0') {
+		if (!aql_disabled)
+			static_branch_inc(&aql_disable);
+	} else if (buf[0] == '1' && buf[1] == '\0') {
+		if (aql_disabled)
+			static_branch_dec(&aql_disable);
+	} else {
+		return -EINVAL;
+	}
+
+	return count;
+}
+#endif
+
+#if LINUX_VERSION_IS_GEQ(4,10,0)
+static const struct file_operations aql_enable_ops = {
+	.write = aql_enable_write,
+	.read = aql_enable_read,
+	.open = simple_open,
+	.llseek = default_llseek,
+};
+#endif
 
 static ssize_t force_tx_status_read(struct file *file,
 				    char __user *user_buf,
@@ -635,18 +359,17 @@ static ssize_t force_tx_status_write(struct file *file,
 {
 	struct ieee80211_local *local = file->private_data;
 	char buf[3];
-	size_t len;
 
-	if (count > sizeof(buf))
+	if (count >= sizeof(buf))
 		return -EINVAL;
 
 	if (copy_from_user(buf, user_buf, count))
 		return -EFAULT;
 
-	buf[sizeof(buf) - 1] = '\0';
-	len = strlen(buf);
-	if (len > 0 && buf[len - 1] == '\n')
-		buf[len - 1] = 0;
+	if (count && buf[count - 1] == '\n')
+		buf[count - 1] = '\0';
+	else
+		buf[count] = '\0';
 
 	if (buf[0] == '0' && buf[1] == '\0')
 		local->force_tx_status = 0;
@@ -665,15 +388,62 @@ static const struct file_operations force_tx_status_ops = {
 	.llseek = default_llseek,
 };
 
+static ssize_t airtime_read(struct file *file,
+			    char __user *user_buf,
+			    size_t count,
+			    loff_t *ppos)
+{
+	struct ieee80211_local *local = file->private_data;
+	char buf[200];
+	u64 v_t[IEEE80211_NUM_ACS];
+	u64 wt[IEEE80211_NUM_ACS];
+	int len = 0, ac;
+
+	for (ac = 0; ac < IEEE80211_NUM_ACS; ac++) {
+		spin_lock_bh(&local->airtime[ac].lock);
+		v_t[ac] = local->airtime[ac].v_t;
+		wt[ac] = local->airtime[ac].weight_sum;
+		spin_unlock_bh(&local->airtime[ac].lock);
+	}
+	len = scnprintf(buf, sizeof(buf),
+			"\tVO         VI         BE         BK\n"
+			"Virt-t\t%-10llu %-10llu %-10llu %-10llu\n"
+			"Weight\t%-10llu %-10llu %-10llu %-10llu\n",
+			v_t[0],
+			v_t[1],
+			v_t[2],
+			v_t[3],
+			wt[0],
+			wt[1],
+			wt[2],
+			wt[3]);
+
+	return simple_read_from_buffer(user_buf, count, ppos,
+				       buf, len);
+}
+
+static const struct file_operations airtime_ops = {
+	.read = airtime_read,
+	.open = simple_open,
+	.llseek = default_llseek,
+};
+
 #ifdef CONFIG_PM
 static ssize_t reset_write(struct file *file, const char __user *user_buf,
 			   size_t count, loff_t *ppos)
 {
 	struct ieee80211_local *local = file->private_data;
+	int ret;
 
 	rtnl_lock();
+	wiphy_lock(local->hw.wiphy);
 	__ieee80211_suspend(&local->hw, NULL);
-	__ieee80211_resume(&local->hw);
+	ret = __ieee80211_resume(&local->hw);
+	wiphy_unlock(local->hw.wiphy);
+
+	if (ret)
+		cfg80211_shutdown_all_interfaces(local->hw.wiphy);
+
 	rtnl_unlock();
 
 	return count;
@@ -736,7 +506,10 @@ static const char *hw_flag_names[] = {
 	FLAG(TX_STATUS_NO_AMPDU_LEN),
 	FLAG(SUPPORTS_MULTI_BSSID),
 	FLAG(SUPPORTS_ONLY_HE_MULTI_BSSID),
-	FLAG(EXT_KEY_ID_NATIVE),
+	FLAG(AMPDU_KEYBORDER_SUPPORT),
+	FLAG(SUPPORTS_TX_ENCAP_OFFLOAD),
+	FLAG(SUPPORTS_RX_DECAP_OFFLOAD),
+	FLAG(SUPPORTS_CONC_MON_RX_DECAP),
 #undef FLAG
 };
 
@@ -898,14 +671,24 @@ void debugfs_hw_add(struct ieee80211_local *local)
 	DEBUGFS_ADD(hwflags);
 	DEBUGFS_ADD(user_power);
 	DEBUGFS_ADD(power);
+	DEBUGFS_ADD(hw_conf);
 	DEBUGFS_ADD_MODE(force_tx_status, 0600);
-	DEBUGFS_ADD_MODE(aqm, 0600);
+#if LINUX_VERSION_IS_GEQ(4,10,0)
+	DEBUGFS_ADD_MODE(aql_enable, 0600);
+#endif
 
 	if (local->ops->wake_tx_queue)
 		DEBUGFS_ADD_MODE(aqm, 0600);
 
-	debugfs_create_u16("airtime_flags", 0600,
-			   phyd, &local->airtime_flags);
+	if (wiphy_ext_feature_isset(local->hw.wiphy,
+				    NL80211_EXT_FEATURE_AIRTIME_FAIRNESS)) {
+		DEBUGFS_ADD_MODE(airtime, 0600);
+		DEBUGFS_ADD_MODE(airtime_flags, 0600);
+	}
+
+	DEBUGFS_ADD(aql_txq_limit);
+	debugfs_create_u32("aql_threshold", 0600,
+			   phyd, &local->aql_threshold);
 
 	statsd = debugfs_create_dir("statistics", phyd);
 
@@ -942,10 +725,4 @@ void debugfs_hw_add(struct ieee80211_local *local)
 	DEBUGFS_DEVSTATS_ADD(dot11RTSFailureCount);
 	DEBUGFS_DEVSTATS_ADD(dot11FCSErrorCount);
 	DEBUGFS_DEVSTATS_ADD(dot11RTSSuccessCount);
-
-#ifdef CPTCFG_MAC80211_LATENCY_MEASUREMENTS
-	DEBUGFS_DEVSTATS_ADD(tx_latency);
-	DEBUGFS_DEVSTATS_ADD(tx_latency_points);
-	DEBUGFS_DEVSTATS_ADD(tx_consecutive_loss);
-#endif /* CPTCFG_MAC80211_LATENCY_MEASUREMENTS */
 }

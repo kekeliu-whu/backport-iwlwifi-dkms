@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
  ############################################################################
  #
  # This file is provided under a dual BSD/GPLv2 license.  When using or
@@ -17,18 +17,9 @@
  # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  # General Public License for more details.
  #
- # You should have received a copy of the GNU General Public License
- # along with this program; if not, write to the Free Software
- # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110,
- # USA
  #
  # The full GNU General Public License is included in this distribution
  # in the file called COPYING.
- #
- # Contact Information:
- #  Intel Linux Wireless <linuxwifi@intel.com>
- # Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- #
  # BSD LICENSE
  #
  # Copyright(c) 2005 - 2013 Intel Corporation. All rights reserved.
@@ -79,5 +70,5 @@ if __name__ == "__main__":
 		new_name = "compat_" + os.path.basename(sys.argv[1])
 
 	shutil.move(sys.argv[1], os.path.dirname(sys.argv[1]) + "/" + new_name)
-	print "module copied to %s" % new_name
+	print("module copied to %s" % new_name)
 	sys.exit(0)

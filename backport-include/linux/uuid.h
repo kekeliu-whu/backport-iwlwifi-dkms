@@ -15,6 +15,7 @@
 	RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,6)
 #define guid_t uuid_le
 #define uuid_t uuid_be
+#define GUID_INIT UUID_LE
 
 static inline void guid_gen(guid_t *u)
 {
@@ -29,6 +30,7 @@ static inline void guid_copy(guid_t *dst, const guid_t *src)
 {
 	memcpy(dst, src, sizeof(guid_t));
 }
+
 #endif
 
 #endif /* __BACKPORT_LINUX_UUID_H_ */

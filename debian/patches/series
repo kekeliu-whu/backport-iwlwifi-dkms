@@ -1,13 +1,3 @@
 0001-keep-zconf-in-make-clean.patch
 0002-fix-format-overflow-compile-error-in-kconf-confdata..patch
 0005-Makefile.kernel-pass-fno-stack-clash-protection-and-.patch
-0006-backport-address-interface-change-in-linux-skbuff.h-.patch
-0007-backport-add-genlmsg_parse.patch
-0008-backport-update-include-uapi-linux-pci_regs.h.patch
-0009-NOUPSTREAM-iwlwifi-mvm-use-64-bit-version-of-timespe.patch
-0010-NOUPSTREAM-cfg80211-use-parallel_ops-for-genl.patch
-0011-backports-netlink-fix-nla_validate_nested.patch
-0012-netlink-rename-nl80211_validate_nested-to-nla_valida.patch
-0013-ftrace-Rework-event_create_dir.patch
-0014-nl80211-fix-NL80211_ATTR_FTM_RESPONDER-policy.patch
-0015-NOUPSTREAM-nl80211-pull-in-NLA_POLICY_EXACT_LEN_WARN.patch

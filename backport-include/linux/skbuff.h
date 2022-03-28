@@ -200,7 +200,6 @@ static inline struct sk_buff *__pskb_copy_fclone(struct sk_buff *skb,
 struct sk_buff *skb_clone_sk(struct sk_buff *skb);
 #endif
 
-
 #if LINUX_VERSION_IS_LESS(3,18,0)
 #define skb_xmit_more(skb) false
 #elif LINUX_VERSION_IS_LESS(5,2,0)
@@ -339,6 +338,24 @@ static inline u32 skb_get_hash_perturb(struct sk_buff *skb, u32 key)
 #endif /* LINUX_VERSION_IS_LESS(3,3,0) */
 #endif /* LINUX_VERSION_IS_LESS(4,2,0) */
 
+#if LINUX_VERSION_IS_LESS(4,5,0)
+static __always_inline void
+__skb_postpush_rcsum(struct sk_buff *skb, const void *start, unsigned int len,
+		     unsigned int off)
+{
+	if (skb->ip_summed == CHECKSUM_COMPLETE)
+		skb->csum = csum_block_add(skb->csum,
+					   csum_partial(start, len, 0), off);
+}
+
+static inline void skb_postpush_rcsum(struct sk_buff *skb,
+				      const void *start, unsigned int len)
+{
+	__skb_postpush_rcsum(skb, start, len, 0);
+}
+
+#endif /* LINUX_VERSION_IS_LESS(4,5,0) */
+
 #if LINUX_VERSION_IS_LESS(4,13,0) && \
 	RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,6)
 static inline void *backport_skb_put(struct sk_buff *skb, unsigned int len)
@@ -358,6 +375,14 @@ static inline void *backport___skb_push(struct sk_buff *skb, unsigned int len)
 	return __skb_push(skb, len);
 }
 #define __skb_push LINUX_BACKPORT(__skb_push)
+
+static inline void *__skb_put_zero(struct sk_buff *skb, unsigned int len)
+{
+	void *tmp = __skb_put(skb, len);
+
+	memset(tmp, 0, len);
+	return tmp;
+}
 
 static inline void *skb_put_zero(struct sk_buff *skb, unsigned int len)
 {
@@ -384,6 +409,19 @@ static inline void skb_put_u8(struct sk_buff *skb, u8 val)
 }
 #endif
 
+#if LINUX_VERSION_IS_LESS(4,20,0) && !LINUX_VERSION_IN_RANGE(4,19,10, 4,20,0)
+static inline void skb_mark_not_on_list(struct sk_buff *skb)
+{
+	skb->next = NULL;
+}
+
+static inline void skb_list_del_init(struct sk_buff *skb)
+{
+	__list_del_entry((struct list_head *)&skb->next);
+	skb_mark_not_on_list(skb);
+}
+#endif /* < 4.20 || 4.19.10 <= x < 4.20 */
+
 #if LINUX_VERSION_IS_LESS(4,20,0)
 static inline struct sk_buff *__skb_peek(const struct sk_buff_head *list_)
 {
@@ -391,11 +429,42 @@ static inline struct sk_buff *__skb_peek(const struct sk_buff_head *list_)
 }
 #endif
 
+#if LINUX_VERSION_IS_LESS(4,11,0)
+#define skb_mac_offset LINUX_BACKPORT(skb_mac_offset)
+static inline int skb_mac_offset(const struct sk_buff *skb)
+{
+	return skb_mac_header(skb) - skb->data;
+}
+#endif
+
 #if LINUX_VERSION_IS_LESS(5,4,0)
+/**
+ * skb_frag_off() - Returns the offset of a skb fragment
+ * @frag: the paged fragment
+ */
+#define skb_frag_off LINUX_BACKPORT(skb_frag_off)
+static inline unsigned int skb_frag_off(const skb_frag_t *frag)
+{
+	return frag->page_offset;
+}
+
 #define nf_reset_ct LINUX_BACKPORT(nf_reset_ct)
 static inline void nf_reset_ct(struct sk_buff *skb)
 {
 	nf_reset(skb);
+}
+#endif
+
+#ifndef skb_list_walk_safe
+#define skb_list_walk_safe(first, skb, next_skb)				\
+	for ((skb) = (first), (next_skb) = (skb) ? (skb)->next : NULL; (skb); 	\
+	     (skb) = (next_skb), (next_skb) = (skb) ? (skb)->next : NULL)
+#endif
+
+#if LINUX_VERSION_IS_LESS(5,10,54)
+static inline u64 skb_get_kcov_handle(struct sk_buff *skb)
+{
+	return 0;
 }
 #endif
 

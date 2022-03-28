@@ -1,66 +1,9 @@
-/******************************************************************************
- *
- * This file is provided under a dual BSD/GPLv2 license.  When using or
- * redistributing this file, you may do so under either license.
- *
- * GPL LICENSE SUMMARY
- *
- * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
- *
- * The full GNU General Public License is included in this distribution
- * in the file called COPYING.
- *
- * Contact Information:
- *  Intel Linux Wireless <linuxwifi@intel.com>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- * BSD LICENSE
- *
- * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- *  * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- *  * Neither the name Intel Corporation nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *****************************************************************************/
+/* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
+/*
+ * Copyright (C) 2012-2014, 2018-2021 Intel Corporation
+ * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
+ * Copyright (C) 2016-2017 Intel Deutschland GmbH
+ */
 #ifndef __VENDOR_CMD_H__
 #define __VENDOR_CMD_H__
 
@@ -71,7 +14,6 @@
  * @IWL_MVM_VENDOR_CMD_SET_LOW_LATENCY: set low-latency mode for the given
  *	virtual interface
  * @IWL_MVM_VENDOR_CMD_GET_LOW_LATENCY: query low-latency mode
- * @IWL_MVM_VENDOR_CMD_TCM_EVENT: TCM event
  * @IWL_MVM_VENDOR_CMD_LTE_STATE: inform the LTE modem state
  * @IWL_MVM_VENDOR_CMD_LTE_COEX_CONFIG_INFO: configure LTE-Coex static
  *	parameters
@@ -151,12 +93,49 @@
  *	&IWL_MVM_VENDOR_ATTR_FMAC_CONFIG_STR specifies the configuration string.
  * @IWL_MVM_VENDOR_CMD_CSI_EVENT: CSI event, use as a command to enable unicast
  *	reporting to the calling socket
+ * @IWL_MVM_VENDOR_CMD_ADD_PASN_STA: add a PASN station for and initiator or
+ *	responder based on the interface type. &IWL_MVM_VENDOR_ATTR_ADDR
+ *	specifies the station's mac address. &IWL_MVM_VENDOR_ATTR_STA_TK and
+ *	&IWL_MVM_VENDOR_ATTR_STA_CIPHER specify the cipher suite and key to use
+ *	for PMF for this station. &IWL_MVM_VENDOR_ATTR_STA_HLTK specifies the
+ *	HLTK for secure LTF bits generation.
+ * @IWL_MVM_VENDOR_CMD_REMOVE_PASN_STA: remove the PASN station with the mac
+ *	address specified with &IWL_MVM_VENDOR_ATTR_ADDR.
+ * @IWL_MVM_VENDOR_CMD_TIME_SYNC_MEASUREMENT_CONFIG: configure TM/FTM
+ *	measurement protocol for time synchronization.
+ *	&IWL_MVM_VENDOR_ATTR_TIME_SYNC_PROTOCOL_TYPE specifies bitmap of
+ *	time sync measurement protocols for which to record timestamps.
+ *	&IWL_MVM_VENDOR_ATTR_ADDR specifies peer MAC address.
+ * @IWL_MVM_VENDOR_CMD_TIME_SYNC_MSMT_CFM_EVENT: Time Sync measurement
+ *	confirmation notification for TM/FTM. Sent on receipt of 802.11 Ack from
+ *	peer for the Tx'ed TM/FTM measurement action frame.
+ *	&IWL_MVM_VENDOR_ATTR_TIME_SYNC_* specifies the details.
+ * @IWL_MVM_VENDOR_CMD_TIME_SYNC_MSMT_EVENT: Time Sync measurement
+ *	notification for TM/FTM. Sent on receipt of respective WNM action frame
+ *	for TM protocol or public action frame for FTM protocol, from peer device.
+ *	&IWL_MVM_VENDOR_ATTR_TIME_SYNC_* specifies the details.
+ * @IWL_MVM_VENDOR_CMD_GET_CSME_CONN_INFO: reports CSME connection info.
+ * @IWL_MVM_VENDOR_CMD_HOST_GET_OWNERSHIP: host ask for ownership on the device.
+ * @IWL_MVM_VENDOR_CMD_ROAMING_FORBIDDEN_EVENT: notifies if roaming is allowed.
+ *	contains a &IWL_MVM_VENDOR_ATTR_ROAMING_FORBIDDEN and a
+ *	&IWL_MVM_VENDOR_ATTR_VIF_ADDR attribute.
+ * @IWL_MVM_VENDOR_CMD_PPAG_GET_TABLE: retrieves the PPAG table.
+ *	Contains a &IWL_MVM_VENDOR_ATTR_PPAG_TABLE and a
+ *	&IWL_MVM_VENDOR_ATTR_PPAG_NUM_SUB_BANDS attribute.
+ * @IWL_MVM_VENDOR_CMD_SAR_GET_TABLE: retrieves the full SAR table.
+ *	Contains a &IWL_MVM_VENDOR_ATTR_SAR_TABLE and a
+ *	&IWL_MVM_VENDOR_ATTR_SAR_VER attributes.
+ * @IWL_MVM_VENDOR_CMD_GEO_SAR_GET_TABLE: retrieves the full GEO SAR table.
+ *	Contains a &IWL_MVM_VENDOR_ATTR_SAR_TABLE and a
+ *	&IWL_MVM_VENDOR_ATTR_GEO_SAR_VER attributes.
+ * @IWL_MVM_VENDOR_CMD_SGOM_GET_TABLE: retrieves the full SGOM table.
+ *	Contains a &IWL_MVM_VENDOR_ATTR_SGOM_TABLE attributes.
  */
 
 enum iwl_mvm_vendor_cmd {
 	IWL_MVM_VENDOR_CMD_SET_LOW_LATENCY			= 0x00,
 	IWL_MVM_VENDOR_CMD_GET_LOW_LATENCY			= 0x01,
-	IWL_MVM_VENDOR_CMD_TCM_EVENT				= 0x02,
+	/* 0x2 is deprecated */
 	IWL_MVM_VENDOR_CMD_LTE_STATE				= 0x03,
 	IWL_MVM_VENDOR_CMD_LTE_COEX_CONFIG_INFO			= 0x04,
 	IWL_MVM_VENDOR_CMD_LTE_COEX_DYNAMIC_INFO		= 0x05,
@@ -191,22 +170,21 @@ enum iwl_mvm_vendor_cmd {
 	IWL_MVM_VENDOR_CMD_FMAC_CONNECT_PARAMS			= 0x22,
 	IWL_MVM_VENDOR_CMD_FMAC_CONFIG				= 0x23,
 	IWL_MVM_VENDOR_CMD_CSI_EVENT				= 0x24,
-};
-
-/**
- * enum iwl_mvm_vendor_load - traffic load identifiers
- * @IWL_MVM_VENDOR_LOAD_LOW: low load: less than 10% airtime usage
- * @IWL_MVM_VENDOR_LOAD_MEDIUM: medium load: 10% or more, but less than 50%
- * @IWL_MVM_VENDOR_LOAD_HIGH: high load: 50% or more
- *
- * Traffic load is calculated based on the percentage of airtime used
- * (TX airtime is accounted as RTS+CTS+PPDU+ACK/BlockACK, RX airtime
- * is just the PPDU's time)
- */
-enum iwl_mvm_vendor_load {
-	IWL_MVM_VENDOR_LOAD_LOW,
-	IWL_MVM_VENDOR_LOAD_MEDIUM,
-	IWL_MVM_VENDOR_LOAD_HIGH,
+	IWL_MVM_VENDOR_CMD_ADD_PASN_STA				= 0x25,
+	IWL_MVM_VENDOR_CMD_REMOVE_PASN_STA			= 0x26,
+	IWL_MVM_VENDOR_CMD_RFIM_SET_TABLE			= 0x27,
+	IWL_MVM_VENDOR_CMD_RFIM_GET_TABLE			= 0x28,
+	IWL_MVM_VENDOR_CMD_RFIM_GET_CAPA			= 0x29,
+	IWL_MVM_VENDOR_CMD_TIME_SYNC_MEASUREMENT_CONFIG		= 0x2a,
+	IWL_MVM_VENDOR_CMD_TIME_SYNC_MSMT_CFM_EVENT		= 0x2b,
+	IWL_MVM_VENDOR_CMD_TIME_SYNC_MSMT_EVENT			= 0x2c,
+	IWL_MVM_VENDOR_CMD_GET_CSME_CONN_INFO			= 0x2d,
+	IWL_MVM_VENDOR_CMD_HOST_GET_OWNERSHIP			= 0x30,
+	IWL_MVM_VENDOR_CMD_ROAMING_FORBIDDEN_EVENT		= 0x32,
+	IWL_MVM_VENDOR_CMD_PPAG_GET_TABLE                       = 0x33,
+	IWL_MVM_VENDOR_CMD_SAR_GET_TABLE                        = 0x34,
+	IWL_MVM_VENDOR_CMD_GEO_SAR_GET_TABLE                    = 0x35,
+	IWL_MVM_VENDOR_CMD_SGOM_GET_TABLE			= 0x36,
 };
 
 /**
@@ -654,14 +632,36 @@ enum iwl_vendor_fips_test_vector_hw {
 };
 
 /**
+ * enum iwl_mvm_vendor_time_sync_protocol_type - bitmap of time sync
+ * measurement protocols.
+ *
+ * @IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_NONE: Disable TM/FTM time sync
+ *	measurement protocol.
+ * @IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_TM: Timing measurement protocol.
+ * @IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_FTM: Fine Timing measurement protocol.
+ */
+enum iwl_mvm_vendor_time_sync_protocol_type {
+	IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_NONE,
+	IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_TM = BIT(0),
+	IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_FTM = BIT(1),
+};
+
+enum iwl_vendor_auth_akm_mode {
+	IWL_VENDOR_AUTH_OPEN,
+	IWL_VENDOR_AUTH_SHARED,
+	IWL_VENDOR_AUTH_WPA = 0x3,
+	IWL_VENDOR_AUTH_WPA_PSK,
+	IWL_VENDOR_AUTH_RSNA = 0x6,
+	IWL_VENDOR_AUTH_RSNA_PSK,
+	IWL_VENDOR_AUTH_SAE = 0x9,
+	IWL_VENDOR_AUTH_MAX,
+};
+
+/**
  * enum iwl_mvm_vendor_attr - attributes used in vendor commands
  * @__IWL_MVM_VENDOR_ATTR_INVALID: attribute 0 is invalid
  * @IWL_MVM_VENDOR_ATTR_LOW_LATENCY: low-latency flag attribute
  * @IWL_MVM_VENDOR_ATTR_VIF_ADDR: interface MAC address
- * @IWL_MVM_VENDOR_ATTR_VIF_LL: vif-low-latency (u8, 0/1)
- * @IWL_MVM_VENDOR_ATTR_LL: global low-latency (u8, 0/1)
- * @IWL_MVM_VENDOR_ATTR_VIF_LOAD: vif traffic load (u8, see load enum)
- * @IWL_MVM_VENDOR_ATTR_LOAD: global traffic load (u8, see load enum)
  * @IWL_MVM_VENDOR_ATTR_COUNTRY: MCC to set, for regulatory information (u16)
  * IWL_MVM_VENDOR_ATTR_FILTER_ARP_NA: filter gratuitous ARP and unsolicited
  *	Neighbor Advertisement frames
@@ -733,13 +733,10 @@ enum iwl_vendor_fips_test_vector_hw {
  * @IWL_MVM_VENDOR_ATTR_GSCAN_MAX_NUM_EPNO_NETWORKS: max number of epno entries
  * @IWL_MVM_VENDOR_ATTR_GSCAN_MAX_NUM_EPNO_NETWORKS_BY_SSID: max number of epno
  *	entries if ssid is specified
- * @IWL_MVM_VENDOR_ATTR_GSCAN_MAX_NUM_WHITE_LISTED_SSID: max number of white
+ * @IWL_MVM_VENDOR_ATTR_GSCAN_MAX_NUM_WHITE_LISTED_SSID: max number of pass
  *	listed SSIDs
- * @IWL_MVM_VENDOR_ATTR_GSCAN_MAX_NUM_BLACK_LISTED_SSID: max number of black
+ * @IWL_MVM_VENDOR_ATTR_GSCAN_MAX_NUM_BLACK_LISTED_SSID: max number of block
  *	listed SSIDs
- *
- * @NUM_IWL_MVM_VENDOR_ATTR: number of vendor attributes
- * @MAX_IWL_MVM_VENDOR_ATTR: highest vendor attribute number
  * @IWL_MVM_VENDOR_ATTR_WIPHY_FREQ: frequency of the selected channel in MHz,
  *	defines the channel together with the attributes
  *	%IWL_MVM_VENDOR_ATTR_CHANNEL_WIDTH and if needed
@@ -790,11 +787,11 @@ enum iwl_vendor_fips_test_vector_hw {
  * @IWL_MVM_VENDOR_ATTR_FIPS_TEST_VECTOR_HW_GCM: data vector for FIPS GCM HW
  *	test. &enum iwl_vendor_fips_test_vector_hw.
  * @IWL_MVM_VENDOR_ATTR_FMAC_CONNECT_PARAMS_BLACKLIST: an array of BSSIDs to
- *	blacklist. The device shall not try to connect to blacklisted BSSIDs.
+ *	blocklist. The device shall not try to connect to blocklisted BSSIDs.
  *	This attribute shall not be set if
  *	IWL_MVM_VENDOR_ATTR_FMAC_CONNECT_PARAMS_WHITELIST is set.
  * @IWL_MVM_VENDOR_ATTR_FMAC_CONNECT_PARAMS_WHITELIST: an array of BSSIDs to
- *	whitelist. The device shall only try to connect to BSSIDs from the list.
+ *	passlist. The device shall only try to connect to BSSIDs from the list.
  *	This attribute shall not be set if
  *	IWL_MVM_VENDOR_ATTR_FMAC_CONNECT_PARAMS_BLACKLIST is set.
  * @IWL_MVM_VENDOR_ATTR_FMAC_CONNECT_PARAMS_MAX_RETRIES: number of APs to try
@@ -803,15 +800,82 @@ enum iwl_vendor_fips_test_vector_hw {
  *	fmac configuration option.
  * @IWL_MVM_VENDOR_ATTR_CSI_HDR: CSI header
  * @IWL_MVM_VENDOR_ATTR_CSI_DATA: CSI data
+ * @IWL_MVM_VENDOR_ATTR_STA_TK: the TK to use for PMF encryption for the
+ *	station with the mac address specified in &IWL_MVM_VENDOR_ATTR_ADDR.
+ * @IWL_MVM_VENDOR_ATTR_STA_HLTK: the HLTK to use for secure LTF bits
+ *	generation for the station with the mac address specified in
+ *	&IWL_MVM_VENDOR_ATTR_ADDR.
+ * @IWL_MVM_VENDOR_ATTR_STA_CIPHER: the cipher to use for the station with the
+ *	mac address specified in &IWL_MVM_VENDOR_ATTR_ADDR.
+ *	One of WLAN_CIPHER_SUITE_*.
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_PROTOCOL_TYPE: bitmap of time sync
+ *	measurement protocols for which to record timestamps,
+ *	one of &enum iwl_mvm_vendor_time_sync_protocol_type.
+ * @IWL_MVM_VENDOR_ATTR_PAD: attribute used for padding for 64-bit alignment
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_DIALOG_TOKEN: u32 attribute. Measurement
+ *	flow dialog token number.
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1: u64 attribute. t1-time of the Tx'ed
+ *	 action frame departure on sender side in units of 10 nano seconds.
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1_MAX_ERROR: u32 attribute. Maximum t1-time
+ *	error in units of 10 nano seconds.
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4: u64 attribute. t4-time of the Rx'ed
+ *	action frame's ack arrival on sender side in units of 10 nano seconds.
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4_MAX_ERROR: u32 attribute. Maximum t4-time
+ *	error in units of 10 nano seconds.
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_FUP_DIALOG_TOKEN: u32 attribute. Measurement
+ *	 flow previous dialog token number
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2: u64 attribute. t1-time of the Rx'ed
+ *	action frame arrival on receiver side in units of 10 nano seconds.
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2_MAX_ERROR: u32 attribute. Maximum t1-time
+ *	error in units of 10 nano seconds.
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3: u64 attribute. t4-time of the Tx'ed
+ *	action frame's Ack departure on receiver side in units of
+ *	10 nano seconds.
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3_MAX_ERROR: u32 attribute. Maximum t4-time
+ *	error in units of 10 nano seconds.
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_VS_DATA: vendor specific data. This does not
+ *	include the IE header.
+ * @IWL_MVM_VENDOR_ATTR_ROAMING_FORBIDDEN: u8 attribute. Indicates whether
+ *	roaming is forbidden or not. Value 1 means roaming is forbidden,
+ *	0 mean roaming is allowed.
+ * @IWL_MVM_VENDOR_ATTR_AUTH_MODE: u32 attribute. Authentication mode type
+ *	as specified in &enum iwl_vendor_auth_akm_mode.
+ * @IWL_MVM_VENDOR_ATTR_CHANNEL_NUM: u8 attribute. Contains channel number.
+ * @IWL_MVM_VENDOR_ATTR_BAND: u8 attribute.
+ *	0 for 2.4 GHz band, 1 for 5.2GHz band and 2 for 6GHz band.
+ * @IWL_MVM_VENDOR_ATTR_COLLOC_CHANNEL: u32 attribute. Channel number of
+ *	collocated AP. Relevant for 6GHz AP info.
+ * @IWL_MVM_VENDOR_ATTR_COLLOC_ADDR: MAC address of a collocated AP.
+ *	Relevant for 6GHz AP info.
+ * @IWL_MVM_VENDOR_ATTR_PPAG_TABLE: nested attribute. Contains a binary
+ *	attribute for each chain, each of them contains the ppag
+ *	values for all sub-bands.
+ * @IWL_MVM_VENDOR_ATTR_PPAG_NUM_SUB_BANDS: u32 attribute. The number of
+ *	sub-bands that we have in the ppag table.
+ * @IWL_MVM_VENDOR_ATTR_SAR_TABLE: nested attribute. Contains a nested
+ *	attribute for each profile, each of them contains binary attribute
+ *	for each chain.
+ * @IWL_MVM_VENDOR_ATTR_SAR_VER: u32 attribute. Contains the SAR table version.
+ * @IWL_MVM_VENDOR_ATTR_GEO_SAR_TABLE: nested attribute. Contains a
+ *	nested attribute for each profile, each of them contains
+ *	a nested attribute for each band. See &enum
+ *	iwl_vendor_sar_per_chain_geo_table.
+ * @IWL_MVM_VNDOR_ATTR_GEO_SAR_VER: u32 attribute. Contains the GEO SAR
+ *	table version
+ * @IWL_MVM_VENDOR_ATTR_SGOM_TABLE: binary attribute.
+ *
+ * @NUM_IWL_MVM_VENDOR_ATTR: number of vendor attributes
+ * @MAX_IWL_MVM_VENDOR_ATTR: highest vendor attribute number
+
  */
 enum iwl_mvm_vendor_attr {
 	__IWL_MVM_VENDOR_ATTR_INVALID				= 0x00,
 	IWL_MVM_VENDOR_ATTR_LOW_LATENCY				= 0x01,
 	IWL_MVM_VENDOR_ATTR_VIF_ADDR				= 0x02,
-	IWL_MVM_VENDOR_ATTR_VIF_LL				= 0x03,
-	IWL_MVM_VENDOR_ATTR_LL					= 0x04,
-	IWL_MVM_VENDOR_ATTR_VIF_LOAD				= 0x05,
-	IWL_MVM_VENDOR_ATTR_LOAD				= 0x06,
+	/* 0x3 is deprecated */
+	/* 0x4 is deprecated */
+	/* 0x5 is deprecated */
+	/* 0x6 is deprecated */
 	IWL_MVM_VENDOR_ATTR_COUNTRY				= 0x07,
 	IWL_MVM_VENDOR_ATTR_FILTER_ARP_NA			= 0x08,
 	IWL_MVM_VENDOR_ATTR_FILTER_GTK				= 0x09,
@@ -884,6 +948,40 @@ enum iwl_mvm_vendor_attr {
 	IWL_MVM_VENDOR_ATTR_FMAC_CONFIG_STR			= 0x4c,
 	IWL_MVM_VENDOR_ATTR_CSI_HDR				= 0x4d,
 	IWL_MVM_VENDOR_ATTR_CSI_DATA				= 0x4e,
+	IWL_MVM_VENDOR_ATTR_STA_TK				= 0x4f,
+	IWL_MVM_VENDOR_ATTR_STA_HLTK				= 0x50,
+	IWL_MVM_VENDOR_ATTR_STA_CIPHER				= 0x51,
+	IWL_MVM_VENDOR_ATTR_RFIM_INFO				= 0x52,
+	IWL_MVM_VENDOR_ATTR_RFIM_FREQ				= 0x53,
+	IWL_MVM_VENDOR_ATTR_RFIM_CHANNELS			= 0x54,
+	IWL_MVM_VENDOR_ATTR_RFIM_BANDS				= 0x55,
+	IWL_MVM_VENDOR_ATTR_RFIM_CAPA				= 0x56,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_PROTOCOL_TYPE		= 0x57,
+	IWL_MVM_VENDOR_ATTR_PAD					= 0x58,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_DIALOG_TOKEN		= 0x59,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1			= 0x5a,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1_MAX_ERROR		= 0x5b,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4			= 0x5c,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4_MAX_ERROR		= 0x5d,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_FUP_DIALOG_TOKEN		= 0x5e,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2			= 0x5f,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2_MAX_ERROR		= 0x60,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3			= 0x61,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3_MAX_ERROR		= 0x62,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_VS_DATA			= 0x63,
+	IWL_MVM_VENDOR_ATTR_ROAMING_FORBIDDEN			= 0x64,
+	IWL_MVM_VENDOR_ATTR_AUTH_MODE				= 0x65,
+	IWL_MVM_VENDOR_ATTR_CHANNEL_NUM				= 0x66,
+	IWL_MVM_VENDOR_ATTR_BAND				= 0x69,
+	IWL_MVM_VENDOR_ATTR_COLLOC_CHANNEL			= 0x70,
+	IWL_MVM_VENDOR_ATTR_COLLOC_ADDR				= 0x71,
+	IWL_MVM_VENDOR_ATTR_PPAG_TABLE                          = 0x72,
+	IWL_MVM_VENDOR_ATTR_PPAG_NUM_SUB_BANDS                  = 0x73,
+	IWL_MVM_VENDOR_ATTR_SAR_TABLE                           = 0x74,
+	IWL_MVM_VENDOR_ATTR_SAR_VER                             = 0x75,
+	IWL_MVM_VENDOR_ATTR_GEO_SAR_TABLE                       = 0x76,
+	IWL_MVM_VENDOR_ATTR_GEO_SAR_VER                         = 0x77,
+	IWL_MVM_VENDOR_ATTR_SGOM_TABLE				= 0x78,
 
 	NUM_IWL_MVM_VENDOR_ATTR,
 	MAX_IWL_MVM_VENDOR_ATTR = NUM_IWL_MVM_VENDOR_ATTR - 1,

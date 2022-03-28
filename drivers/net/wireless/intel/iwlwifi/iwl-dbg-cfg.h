@@ -1,64 +1,8 @@
-/******************************************************************************
- *
- * This file is provided under a dual BSD/GPLv2 license.  When using or
- * redistributing this file, you may do so under either license.
- *
- * GPL LICENSE SUMMARY
- *
- * Copyright(c) 2013 - 2015 Intel Corporation. All rights reserved.
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright (C) 2018-2019 Intel Corporation
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
- *
- * The full GNU General Public License is included in this distribution
- * in the file called COPYING.
- *
- * Contact Information:
- *  Intel Linux Wireless <linuxwifi@intel.com>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- * BSD LICENSE
- *
- * Copyright(c) 2013 - 2015 Intel Corporation. All rights reserved.
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright (C) 2018-2019 Intel Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- *  * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- *  * Neither the name Intel Corporation nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *****************************************************************************/
+/* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
+/*
+ * Copyright (C) 2013-2015, 2018-2021 Intel Corporation
+ * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
+ */
 #if !defined(__IWL_DBG_CFG_H__) || defined(DBG_CFG_REINCLUDE)
 #undef __IWL_DBG_CFG_H__ /* avoid warning */
 #define __IWL_DBG_CFG_H__
@@ -146,7 +90,6 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG(bool, MVM_FW_BCAST_FILTER_PASS_ALL)
 	IWL_DBG_CFG(bool, MVM_TOF_IS_RESPONDER)
 	IWL_DBG_CFG(bool, MVM_P2P_LOWLATENCY_PS_ENABLE)
-	IWL_DBG_CFG(bool, MVM_SW_TX_CSUM_OFFLOAD)
 	IWL_DBG_CFG(bool, MVM_HW_CSUM_DISABLE)
 	IWL_DBG_CFG(bool, MVM_PARSE_NVM)
 	IWL_DBG_CFG(bool, MVM_ADWELL_ENABLE)
@@ -199,23 +142,44 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG_NODEF(u16, MVM_FTM_RESP_TOA_OFFSET)
 	IWL_DBG_CFG_NODEF(u32, MVM_FTM_RESP_VALID)
 	IWL_DBG_CFG_NODEF(u32, MVM_FTM_RESP_FLAGS)
+	IWL_DBG_CFG(bool, MVM_FTM_RESP_NDP_SUPPORT)
+	IWL_DBG_CFG(bool, MVM_FTM_RESP_LMR_FEEDBACK_SUPPORT)
 	IWL_DBG_CFG(u8, MVM_FTM_INITIATOR_ALGO)
 	IWL_DBG_CFG(bool, MVM_FTM_INITIATOR_DYNACK)
+	IWL_DBG_CFG(bool, MVM_FTM_LMR_FEEDBACK_TERMINATE)
 	IWL_DBG_CFG_NODEF(bool, MVM_FTM_INITIATOR_MCSI_ENABLED)
 	IWL_DBG_CFG_NODEF(int, MVM_FTM_INITIATOR_COMMON_CALIB)
 	IWL_DBG_CFG_NODEF(bool, MVM_FTM_INITIATOR_FAST_ALGO_DISABLE)
+	IWL_DBG_CFG_RANGE(u8, MVM_FTM_R2I_MAX_REP, 0, 7)
+	IWL_DBG_CFG_RANGE(u8, MVM_FTM_I2R_MAX_REP, 0, 7)
+	IWL_DBG_CFG_RANGE(u8, MVM_FTM_R2I_MAX_STS, 0, 7)
+	IWL_DBG_CFG_RANGE(u8, MVM_FTM_I2R_MAX_STS, 0, 7)
+	IWL_DBG_CFG_RANGE(u8, MVM_FTM_R2I_MAX_TOTAL_LTF, 0, 3)
+	IWL_DBG_CFG_RANGE(u8, MVM_FTM_I2R_MAX_TOTAL_LTF, 0, 3)
+	IWL_DBG_CFG(bool, MVM_FTM_INITIATOR_SECURE_LTF)
+	IWL_DBG_CFG(u16, MVM_FTM_NON_TB_MIN_TIME_BETWEEN_MSR)
+	IWL_DBG_CFG(u16, MVM_FTM_NON_TB_MAX_TIME_BETWEEN_MSR)
 	IWL_DBG_CFG(bool, MVM_D3_DEBUG)
 	IWL_DBG_CFG(bool, MVM_USE_TWT)
+	IWL_DBG_CFG(bool, MVM_TWT_TESTMODE)
 	IWL_DBG_CFG(u32, MVM_AMPDU_CONSEC_DROPS_DELBA)
 	IWL_MVM_MOD_PARAM(int, power_scheme)
 	IWL_MVM_MOD_PARAM(bool, init_dbg)
-	IWL_MVM_MOD_PARAM(bool, tfd_q_hang_detect)
 	IWL_DBG_CFG(bool, MVM_FTM_INITIATOR_ENABLE_SMOOTH)
 	IWL_DBG_CFG_RANGE(u8, MVM_FTM_INITIATOR_SMOOTH_ALPHA, 0, 100)
 	/* 667200 is 200m RTT */
 	IWL_DBG_CFG_RANGE(u32, MVM_FTM_INITIATOR_SMOOTH_UNDERSHOOT, 0, 667200)
 	IWL_DBG_CFG_RANGE(u32, MVM_FTM_INITIATOR_SMOOTH_OVERSHOOT, 0, 667200)
 	IWL_DBG_CFG(u32, MVM_FTM_INITIATOR_SMOOTH_AGE_SEC)
+	IWL_DBG_CFG(bool, MVM_DISABLE_AP_FILS)
+	IWL_DBG_CFG_STR(ppag_allowed)
+	IWL_DBG_CFG_STR(tas_allowed)
+	IWL_DBG_CFG(u32, MVM_6GHZ_PASSIVE_SCAN_TIMEOUT)
+	IWL_DBG_CFG(u32, MVM_6GHZ_PASSIVE_SCAN_ASSOC_TIMEOUT)
+	IWL_DBG_CFG_NODEF(u32, system_features_control_1)
+	IWL_DBG_CFG_NODEF(u32, system_features_control_2)
+	IWL_DBG_CFG_NODEF(u32, system_features_control_3)
+	IWL_DBG_CFG_NODEF(u32, system_features_control_4)
 #endif /* CPTCFG_IWLMVM */
 #ifdef CPTCFG_IWLWIFI_DEVICE_TESTMODE
 	IWL_DBG_CFG_NODEF(u32, dnt_out_mode)
@@ -274,9 +238,12 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG_STR(fw_file_pre)
 	IWL_DBG_CFG_NODEF(u32, valid_ants)
 	IWL_DBG_CFG_NODEF(u32, no_ack_en)
+	IWL_DBG_CFG_NODEF(u32, ack_en)
 	IWL_DBG_CFG_NODEF(bool, no_ldpc)
+	IWL_DBG_CFG_NODEF(bool, smps_disabled)
 	IWL_DBG_CFG_NODEF(u16, rx_agg_subframes)
 	IWL_DBG_CFG_NODEF(bool, tx_siso_80bw_like_160bw)
+	IWL_DBG_CFG_NODEF(u16, ampdu_limit)
 	IWL_DBG_CFG_NODEF(u16, rx_mcs_80)
 	IWL_DBG_CFG_NODEF(u16, tx_mcs_80)
 	IWL_DBG_CFG_NODEF(u16, rx_mcs_160)
@@ -286,7 +253,6 @@ struct iwl_dbg_cfg {
 	IWL_MOD_PARAM(bool, fw_restart)
 	IWL_MOD_PARAM(bool, power_save)
 	IWL_MOD_PARAM(bool, bt_coex_active)
-	IWL_MOD_PARAM(int, antenna_coupling)
 	IWL_MOD_PARAM(int, power_level)
 	IWL_MOD_PARAM(int, led_mode)
 	IWL_MOD_PARAM(int, amsdu_size)
@@ -301,6 +267,9 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG_BIN(he_phy_cap)
 	IWL_DBG_CFG_NODEF(u32, FW_DBG_DOMAIN)
 	IWL_DBG_CFG_FN(FW_DBG_PRESET, iwl_dbg_cfg_parse_fw_dbg_preset)
+	IWL_DBG_CFG_NODEF(bool, he_smps_disabled)
+	IWL_DBG_CFG_NODEF(bool, ht_dynamic_smps)
+	IWL_DBG_CFG_NODEF(bool, amsdu_in_ampdu_disabled)
 #ifdef CPTCFG_IWLWIFI_DEBUG
 	IWL_MOD_PARAM(u32, debug_level)
 #endif /* CPTCFG_IWLWIFI_DEBUG */
