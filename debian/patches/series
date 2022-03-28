@@ -1,5 +1,3 @@
 0001-keep-zconf-in-make-clean.patch
 0002-fix-format-overflow-compile-error-in-kconf-confdata..patch
 0005-Makefile.kernel-pass-fno-stack-clash-protection-and-.patch
-0006-BUGFIX-NOUPSTREAM-iwlwifi-iwlmei-can-t-work-on-5.14.patch
-0007-BUGFIX-NOUPSTREAM-iwlwifi-iwlmei-isn-t-going-to-be-m.patch
