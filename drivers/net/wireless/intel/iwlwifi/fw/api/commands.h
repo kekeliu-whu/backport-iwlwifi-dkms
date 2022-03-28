@@ -2,7 +2,7 @@
 /*
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2021 Intel Corporation
+ * Copyright (C) 2018-2022 Intel Corporation
  */
 #ifndef __iwl_fw_api_commands_h__
 #define __iwl_fw_api_commands_h__
@@ -20,6 +20,8 @@
  *	&enum iwl_phy_ops_subcmd_ids
  * @DATA_PATH_GROUP: data path group, uses command IDs from
  *	&enum iwl_data_path_subcmd_ids
+ * @SCAN_GROUP: scan group, uses command IDs from
+ *	&enum iwl_scan_subcmd_ids
  * @NAN_GROUP: NAN group, uses command IDs from &enum iwl_nan_subcmd_ids
  * @LOCATION_GROUP: location group, uses command IDs from
  *	&enum iwl_location_subcmd_ids
@@ -37,6 +39,7 @@ enum iwl_mvm_command_groups {
 	MAC_CONF_GROUP = 0x3,
 	PHY_OPS_GROUP = 0x4,
 	DATA_PATH_GROUP = 0x5,
+	SCAN_GROUP = 0x6,
 	NAN_GROUP = 0x7,
 	LOCATION_GROUP = 0x8,
 	PROT_OFFLOAD_GROUP = 0xb,
@@ -93,7 +96,8 @@ enum iwl_legacy_cmds {
 
 	/**
 	 * @SCAN_CFG_CMD:
-	 * uses &struct iwl_scan_config_v1 or &struct iwl_scan_config
+	 * uses &struct iwl_scan_config_v1, &struct iwl_scan_config_v2
+	 * or &struct iwl_scan_config
 	 */
 	SCAN_CFG_CMD = 0xc,
 
@@ -347,14 +351,6 @@ enum iwl_legacy_cmds {
 	REPLY_THERMAL_MNG_BACKOFF = 0x7e,
 
 	/**
-	 * @DC2DC_CONFIG_CMD:
-	 * Set/Get DC2DC frequency tune
-	 * Command is &struct iwl_dc2dc_config_cmd,
-	 * response is &struct iwl_dc2dc_config_resp
-	 */
-	DC2DC_CONFIG_CMD = 0x83,
-
-	/**
 	 * @NVM_ACCESS_CMD: using &struct iwl_nvm_access_cmd
 	 */
 	NVM_ACCESS_CMD = 0x88,
@@ -408,13 +404,6 @@ enum iwl_legacy_cmds {
 	 * &struct iwl_dev_tx_power_cmd
 	 */
 	REDUCE_TX_POWER_CMD = 0x9f,
-
-	/**
-	 * @CARD_STATE_NOTIFICATION:
-	 * Card state (RF/CT kill) notification,
-	 * uses &struct iwl_card_state_notif
-	 */
-	CARD_STATE_NOTIFICATION = 0xa1,
 
 	/**
 	 * @MISSED_BEACONS_NOTIFICATION: &struct iwl_missed_beacons_notif
@@ -538,11 +527,6 @@ enum iwl_legacy_cmds {
 	DEBUG_LOG_MSG = 0xf7,
 
 	/**
-	 * @BCAST_FILTER_CMD: &struct iwl_bcast_filter_cmd
-	 */
-	BCAST_FILTER_CMD = 0xcf,
-
-	/**
 	 * @MCAST_FILTER_CMD: &struct iwl_mcast_filter_cmd
 	 */
 	MCAST_FILTER_CMD = 0xd0,
@@ -649,6 +633,11 @@ enum iwl_system_subcmd_ids {
 	 * @SYSTEM_FEATURES_CONTROL_CMD: &struct iwl_system_features_control_cmd
 	 */
 	SYSTEM_FEATURES_CONTROL_CMD = 0xd,
+
+	/**
+	 * @RFI_DEACTIVATE_NOTIF: &struct iwl_rfi_deactivate_notif
+	 */
+	RFI_DEACTIVATE_NOTIF = 0xff,
 };
 
 /**

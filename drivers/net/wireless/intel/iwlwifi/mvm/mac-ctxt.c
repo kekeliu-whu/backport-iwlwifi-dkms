@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2012-2014, 2018-2021 Intel Corporation
+ * Copyright (C) 2012-2014, 2018-2022 Intel Corporation
  * Copyright (C) 2013-2014 Intel Mobile Communications GmbH
  * Copyright (C) 2015-2017 Intel Deutschland GmbH
  */
@@ -577,7 +577,6 @@ static int iwl_mvm_mac_ctxt_cmd_sta(struct iwl_mvm *mvm,
 	if (vif->bss_conf.assoc && vif->bss_conf.dtim_period &&
 	    !force_assoc_off) {
 		struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
-		u8 ap_sta_id = mvmvif->ap_sta_id;
 		u32 dtim_offs;
 
 		/*
@@ -624,24 +623,8 @@ static int iwl_mvm_mac_ctxt_cmd_sta(struct iwl_mvm *mvm,
 		 * allow multicast data frames only as long as the station is
 		 * authorized, i.e., GTK keys are already installed (if needed)
 		 */
-		if (ap_sta_id < mvm->fw->ucode_capa.num_stations) {
-			struct ieee80211_sta *sta;
-
-			rcu_read_lock();
-
-			sta = rcu_dereference(mvm->fw_id_to_mac_id[ap_sta_id]);
-			if (!IS_ERR_OR_NULL(sta)) {
-				struct iwl_mvm_sta *mvmsta =
-					iwl_mvm_sta_from_mac80211(sta);
-
-				if (mvmsta->sta_state ==
-				    IEEE80211_STA_AUTHORIZED)
-					cmd.filter_flags |=
-						cpu_to_le32(MAC_FILTER_ACCEPT_GRP);
-			}
-
-			rcu_read_unlock();
-		}
+		if (mvmvif->authorized)
+			cmd.filter_flags |= cpu_to_le32(MAC_FILTER_ACCEPT_GRP);
 	} else {
 		ctxt_sta->is_assoc = cpu_to_le32(0);
 
@@ -834,10 +817,7 @@ u8 iwl_mvm_mac_ctxt_get_lowest_rate(struct ieee80211_tx_info *info,
 u16 iwl_mvm_mac_ctxt_get_beacon_flags(const struct iwl_fw *fw, u8 rate_idx)
 {
 	u16 flags = iwl_mvm_mac80211_idx_to_hwrate(fw, rate_idx);
-	bool is_new_rate = iwl_fw_lookup_cmd_ver(fw,
-						 LONG_GROUP,
-						 BEACON_TEMPLATE_CMD,
-						 0) > 10;
+	bool is_new_rate = iwl_fw_lookup_cmd_ver(fw, BEACON_TEMPLATE_CMD, 0) > 10;
 
 	if (rate_idx <= IWL_FIRST_CCK_RATE)
 		flags |= is_new_rate ? IWL_MAC_BEACON_CCK
@@ -978,8 +958,7 @@ static int iwl_mvm_mac_ctxt_send_beacon_v9(struct iwl_mvm *mvm,
 	WARN_ON(channel == 0);
 	if (cfg80211_channel_is_psc(ctx->def.chan) &&
 	    !IWL_MVM_DISABLE_AP_FILS) {
-		flags |= iwl_fw_lookup_cmd_ver(mvm->fw, LONG_GROUP,
-					       BEACON_TEMPLATE_CMD,
+		flags |= iwl_fw_lookup_cmd_ver(mvm->fw, BEACON_TEMPLATE_CMD,
 					       0) > 10 ?
 			IWL_MAC_BEACON_FILS :
 			IWL_MAC_BEACON_FILS_V1;
@@ -1487,8 +1466,9 @@ void iwl_mvm_rx_stored_beacon_notif(struct iwl_mvm *mvm,
 	struct sk_buff *skb;
 	u8 *data;
 	u32 size = le32_to_cpu(sb->byte_count);
-	int ver = iwl_fw_lookup_cmd_ver(mvm->fw, PROT_OFFLOAD_GROUP,
-					STORED_BEACON_NTF, 0);
+	int ver = iwl_fw_lookup_cmd_ver(mvm->fw,
+					WIDE_ID(PROT_OFFLOAD_GROUP, STORED_BEACON_NTF),
+					0);
 
 	if (size == 0)
 		return;
@@ -1665,9 +1645,12 @@ void iwl_mvm_channel_switch_error_notif(struct iwl_mvm *mvm,
 	u32 id = le32_to_cpu(notif->mac_id);
 	u32 csa_err_mask = le32_to_cpu(notif->csa_err_mask);
 
+	rcu_read_lock();
 	vif = iwl_mvm_rcu_dereference_vif_id(mvm, id, true);
-	if (!vif)
+	if (!vif) {
+		rcu_read_unlock();
 		return;
+	}
 
 	IWL_DEBUG_INFO(mvm, "FW reports CSA error: mac_id=%u, csa_err_mask=%u\n",
 		       id, csa_err_mask);
@@ -1675,6 +1658,7 @@ void iwl_mvm_channel_switch_error_notif(struct iwl_mvm *mvm,
 			    CS_ERR_LONG_DELAY_AFTER_CS |
 			    CS_ERR_TX_BLOCK_TIMER_EXPIRED))
 		ieee80211_channel_switch_disconnect(vif, true);
+	rcu_read_unlock();
 }
 
 void iwl_mvm_rx_missed_vap_notif(struct iwl_mvm *mvm,
