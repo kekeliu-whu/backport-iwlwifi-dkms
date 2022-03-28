@@ -1,7 +1,8 @@
 Source: backport-iwlwifi-dkms
 Section: kernel
 Priority: optional
-Maintainer: You-Sheng Yang <vicamo@gmail.com>
+Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
+XSBC-Original-Maintainer: You-Sheng Yang <vicamo@gmail.com>
 Rules-Requires-Root: no
 Build-Depends:
  debhelper-compat (= 13),

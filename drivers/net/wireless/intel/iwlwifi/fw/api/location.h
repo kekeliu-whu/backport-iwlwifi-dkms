@@ -307,13 +307,13 @@ struct iwl_tof_responder_config_cmd_v7 {
  * @r2i_ndp_params: parameters for R2I NDP.
  *	bits 0 - 2: max number of LTF repetitions
  *	bits 3 - 5: max number of spatial streams (supported values are < 2)
- *	bits 6 - 7: max number of total LTFs
- *		    (&enum ieee80211_range_params_max_total_ltf)
+ *	bits 6 - 7: max number of total LTFs see
+ *	&enum ieee80211_range_params_max_total_ltf
  * @i2r_ndp_params: parameters for I2R NDP.
  *	bits 0 - 2: max number of LTF repetitions
  *	bits 3 - 5: max number of spatial streams
- *	bits 6 - 7: max number of total LTFs
- *		    (&enum ieee80211_range_params_max_total_ltf)
+ *	bits 6 - 7: max number of total LTFs see
+ *	&enum ieee80211_range_params_max_total_ltf
  */
 struct iwl_tof_responder_config_cmd_v8 {
 	__le32 cmd_valid_fields;
@@ -353,13 +353,13 @@ struct iwl_tof_responder_config_cmd_v8 {
  * @r2i_ndp_params: parameters for R2I NDP.
  *	bits 0 - 2: max number of LTF repetitions
  *	bits 3 - 5: max number of spatial streams (supported values are < 2)
- *	bits 6 - 7: max number of total LTFs
- *		    (&enum ieee80211_range_params_max_total_ltf)
+ *	bits 6 - 7: max number of total LTFs see
+ *	&enum ieee80211_range_params_max_total_ltf
  * @i2r_ndp_params: parameters for I2R NDP.
  *	bits 0 - 2: max number of LTF repetitions
  *	bits 3 - 5: max number of spatial streams
- *	bits 6 - 7: max number of total LTFs
- *		    (&enum ieee80211_range_params_max_total_ltf)
+ *	bits 6 - 7: max number of total LTFs see
+ *	&enum ieee80211_range_params_max_total_ltf
  * @min_time_between_msr: for non trigger based NDP ranging, minimum time
  *	between measurements in milliseconds.
  * @max_time_between_msr: for non trigger based NDP ranging, maximum time
@@ -624,6 +624,7 @@ enum iwl_location_frame_format {
  * @IWL_LOCATION_BW_20MHZ: 20MHz
  * @IWL_LOCATION_BW_40MHZ: 40MHz
  * @IWL_LOCATION_BW_80MHZ: 80MHz
+ * @IWL_LOCATION_BW_160MHZ: 160MHz
  */
 enum iwl_location_bw {
 	IWL_LOCATION_BW_20MHZ,

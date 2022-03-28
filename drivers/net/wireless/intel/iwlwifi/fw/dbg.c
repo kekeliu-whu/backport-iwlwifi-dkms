@@ -804,8 +804,10 @@ iwl_fw_error_dump_file(struct iwl_fw_runtime *fwrt,
 
 	/* reading RXF/TXF sizes */
 	if (test_bit(STATUS_FW_ERROR, &fwrt->trans->status)) {
-		fifo_len = iwl_fw_rxf_len(fwrt, mem_cfg);
-		fifo_len += iwl_fw_txf_len(fwrt, mem_cfg);
+		if (!IS_ENABLED(CPTCFG_IWLWIFI_DONT_DUMP_FIFOS)) {
+			fifo_len = iwl_fw_rxf_len(fwrt, mem_cfg);
+			fifo_len += iwl_fw_txf_len(fwrt, mem_cfg);
+		}
 
 		/* Make room for PRPH registers */
 		if (iwl_fw_dbg_type_on(fwrt, IWL_FW_ERROR_DUMP_PRPH))
@@ -880,7 +882,7 @@ iwl_fw_error_dump_file(struct iwl_fw_runtime *fwrt,
 		dump_info->hw_type =
 			cpu_to_le32(CSR_HW_REV_TYPE(fwrt->trans->hw_rev));
 		dump_info->hw_step =
-			cpu_to_le32(CSR_HW_REV_STEP(fwrt->trans->hw_rev));
+			cpu_to_le32(fwrt->trans->hw_rev_step);
 		memcpy(dump_info->fw_human_readable, fwrt->fw->human_readable,
 		       sizeof(dump_info->fw_human_readable));
 		strncpy(dump_info->dev_human_readable, fwrt->trans->name,
@@ -1164,6 +1166,12 @@ static int iwl_dump_ini_dev_mem_iter(struct iwl_fw_runtime *fwrt,
 	range->range_data_size = reg->dev_addr.size;
 	iwl_trans_read_mem_bytes(fwrt->trans, addr, range->data,
 				 le32_to_cpu(reg->dev_addr.size));
+
+	if (reg->sub_type == IWL_FW_INI_REGION_DEVICE_MEMORY_SUBTYPE_HW_SMEM &&
+	    fwrt->sanitize_ops && fwrt->sanitize_ops->frob_txf)
+		fwrt->sanitize_ops->frob_txf(fwrt->sanitize_ctx,
+					     range->data,
+					     le32_to_cpu(reg->dev_addr.size));
 
 	return sizeof(*range) + le32_to_cpu(range->range_data_size);
 }
@@ -1558,9 +1566,9 @@ iwl_dump_ini_dbgi_sram_iter(struct iwl_fw_runtime *fwrt,
 	iwl_write_prph_no_grab(fwrt->trans, DBGI_SRAM_TARGET_ACCESS_CFG,
 			       DBGI_SRAM_TARGET_ACCESS_CFG_RESET_ADDRESS_MSK);
 	for (i = 0; i < (le32_to_cpu(reg->dev_addr.size) / 4); i++) {
-		prph_data = iwl_read_prph(fwrt->trans, (4 * (i / 2)) + ((i % 2) ?
+		prph_data = iwl_read_prph(fwrt->trans, (i % 2) ?
 					  DBGI_SRAM_TARGET_ACCESS_RDATA_MSB :
-					  DBGI_SRAM_TARGET_ACCESS_RDATA_LSB));
+					  DBGI_SRAM_TARGET_ACCESS_RDATA_LSB);
 		if (prph_data == 0x5a5a5a5a) {
 			iwl_trans_release_nic_access(fwrt->trans);
 			return -EBUSY;
@@ -1981,17 +1989,18 @@ static u32 iwl_dump_ini_mem(struct iwl_fw_runtime *fwrt, struct list_head *list,
 {
 	struct iwl_fw_ini_region_tlv *reg = (void *)reg_data->reg_tlv->data;
 	struct iwl_fw_ini_dump_entry *entry;
-	struct iwl_fw_error_dump_data *tlv;
+	struct iwl_fw_ini_error_dump_data *tlv;
 	struct iwl_fw_ini_error_dump_header *header;
-	u32 type = le32_to_cpu(reg->type), id = le32_to_cpu(reg->id);
+	u32 type = reg->type;
+	u32 id = le32_to_cpu(reg->id);
 	u32 num_of_ranges, i, size;
 	void *range;
 
 	/*
-	 * The higher part of the ID in version 2 is irrelevant for
+	 * The higher part of the ID from 2 is irrelevant for
 	 * us, so mask it out.
 	 */
-	if (le32_to_cpu(reg->hdr.version) == 2)
+	if (le32_to_cpu(reg->hdr.version) >= 2)
 		id &= IWL_FW_INI_REGION_V2_MASK;
 
 	if (!ops->get_num_of_ranges || !ops->get_size || !ops->fill_mem_hdr ||
@@ -2010,6 +2019,9 @@ static u32 iwl_dump_ini_mem(struct iwl_fw_runtime *fwrt, struct list_head *list,
 
 	tlv = (void *)entry->data;
 	tlv->type = reg->type;
+	tlv->sub_type = reg->sub_type;
+	tlv->sub_type_ver = reg->sub_type_ver;
+	tlv->reserved = reg->reserved;
 	tlv->len = cpu_to_le32(size);
 
 	IWL_DEBUG_FW(fwrt, "WRT: Collecting region: id=%d, type=%d\n", id,
@@ -2092,7 +2104,7 @@ static u32 iwl_dump_ini_info(struct iwl_fw_runtime *fwrt,
 	dump->ver_type = cpu_to_le32(fwrt->dump.fw_ver.type);
 	dump->ver_subtype = cpu_to_le32(fwrt->dump.fw_ver.subtype);
 
-	dump->hw_step = cpu_to_le32(CSR_HW_REV_STEP(fwrt->trans->hw_rev));
+	dump->hw_step = cpu_to_le32(fwrt->trans->hw_rev_step);
 
 	/*
 	 * Several HWs all have type == 0x42, so we'll override this value
@@ -2100,7 +2112,7 @@ static u32 iwl_dump_ini_info(struct iwl_fw_runtime *fwrt,
 	 */
 	hw_type = CSR_HW_REV_TYPE(fwrt->trans->hw_rev);
 	if (hw_type == IWL_AX210_HW_TYPE) {
-		u32 prph_val = iwl_read_prph(fwrt->trans, WFPM_OTP_CFG1_ADDR_GEN2);
+		u32 prph_val = iwl_read_umac_prph(fwrt->trans, WFPM_OTP_CFG1_ADDR);
 		u32 is_jacket = !!(prph_val & WFPM_OTP_CFG1_IS_JACKET_BIT);
 		u32 is_cdb = !!(prph_val & WFPM_OTP_CFG1_IS_CDB_BIT);
 		u32 masked_bits = is_jacket | (is_cdb << 1);
@@ -2284,7 +2296,7 @@ static u32 iwl_dump_ini_trigger(struct iwl_fw_runtime *fwrt,
 		}
 
 		reg = (void *)reg_data.reg_tlv->data;
-		reg_type = le32_to_cpu(reg->type);
+		reg_type = reg->type;
 		if (reg_type >= ARRAY_SIZE(iwl_dump_ini_region_ops))
 			continue;
 
@@ -2705,7 +2717,8 @@ static void iwl_fw_dbg_collect_sync(struct iwl_fw_runtime *fwrt, u8 wk_idx)
 	}
 #ifdef CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES
 	if (fwrt->trans->dbg_cfg.disable_wrt_dump) {
-		IWL_DEBUG_FW_INFO(fwrt, "WRT: Data collection disabled\n");
+		IWL_INFO(fwrt,
+			 "WRT: Data collection disabled by iwl-dbg-cfg.ini\n");
 		goto out;
 	}
 #endif
@@ -2720,6 +2733,9 @@ static void iwl_fw_dbg_collect_sync(struct iwl_fw_runtime *fwrt, u8 wk_idx)
 	IWL_DEBUG_FW_INFO(fwrt, "WRT: Data collection done\n");
 
 	iwl_fw_dbg_stop_restart_recording(fwrt, &params, false);
+
+	if (fwrt->trans->dbg.last_tp_resetfw == IWL_FW_INI_RESET_FW_MODE_STOP_FW_ONLY)
+		iwl_force_nmi(fwrt->trans);
 
 out:
 	if (iwl_trans_dbg_ini_valid(fwrt->trans)) {
