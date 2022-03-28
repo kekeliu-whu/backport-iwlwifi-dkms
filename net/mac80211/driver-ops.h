@@ -2,7 +2,7 @@
 /*
 * Portions of this file
 * Copyright(c) 2016 Intel Deutschland GmbH
-* Copyright (C) 2018 - 2019, 2021 Intel Corporation
+* Copyright (C) 2018 - 2019, 2021 - 2022 Intel Corporation
 */
 
 #ifndef __MAC80211_DRIVER_OPS
@@ -150,7 +150,7 @@ static inline int drv_config(struct ieee80211_local *local, u32 changed)
 static inline void drv_bss_info_changed(struct ieee80211_local *local,
 					struct ieee80211_sub_if_data *sdata,
 					struct ieee80211_bss_conf *info,
-					u32 changed)
+					u64 changed)
 {
 	might_sleep();
 
@@ -1448,6 +1448,64 @@ static inline void drv_sta_set_decap_offload(struct ieee80211_local *local,
 		local->ops->sta_set_decap_offload(&local->hw, &sdata->vif, sta,
 						  enabled);
 	trace_drv_return_void(local);
+}
+
+static inline void drv_add_twt_setup(struct ieee80211_local *local,
+				     struct ieee80211_sub_if_data *sdata,
+				     struct ieee80211_sta *sta,
+				     struct ieee80211_twt_setup *twt)
+{
+	struct ieee80211_twt_params *twt_agrt;
+
+	might_sleep();
+
+	if (!check_sdata_in_driver(sdata))
+		return;
+
+	twt_agrt = (void *)twt->params;
+
+	trace_drv_add_twt_setup(local, sta, twt, twt_agrt);
+	local->ops->add_twt_setup(&local->hw, sta, twt);
+	trace_drv_return_void(local);
+}
+
+static inline void drv_twt_teardown_request(struct ieee80211_local *local,
+					    struct ieee80211_sub_if_data *sdata,
+					    struct ieee80211_sta *sta,
+					    u8 flowid)
+{
+	might_sleep();
+	if (!check_sdata_in_driver(sdata))
+		return;
+
+	if (!local->ops->twt_teardown_request)
+		return;
+
+	trace_drv_twt_teardown_request(local, sta, flowid);
+	local->ops->twt_teardown_request(&local->hw, sta, flowid);
+	trace_drv_return_void(local);
+}
+
+static inline int drv_net_fill_forward_path(struct ieee80211_local *local,
+					    struct ieee80211_sub_if_data *sdata,
+					    struct ieee80211_sta *sta,
+					    struct net_device_path_ctx *ctx,
+					    struct net_device_path *path)
+{
+	int ret = -EOPNOTSUPP;
+
+	sdata = get_bss_sdata(sdata);
+	if (!check_sdata_in_driver(sdata))
+		return -EIO;
+
+	trace_drv_net_fill_forward_path(local, sdata, sta);
+	if (local->ops->net_fill_forward_path)
+		ret = local->ops->net_fill_forward_path(&local->hw,
+							&sdata->vif, sta,
+							ctx, path);
+	trace_drv_return_int(local, ret);
+
+	return ret;
 }
 
 #endif /* __MAC80211_DRIVER_OPS */

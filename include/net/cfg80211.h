@@ -7,11 +7,15 @@
  * Copyright 2006-2010	Johannes Berg <johannes@sipsolutions.net>
  * Copyright 2013-2014 Intel Mobile Communications GmbH
  * Copyright 2015-2017	Intel Deutschland GmbH
- * Copyright (C) 2018-2021 Intel Corporation
+ * Copyright (C) 2018-2022 Intel Corporation
  */
 
 #include <linux/ethtool.h>
+#if LINUX_VERSION_IS_LESS(5,11,0)
 #include <linux/rfkill.h>
+#else
+#include <uapi/linux/rfkill.h>
+#endif
 #include <linux/netdevice.h>
 #include <linux/debugfs.h>
 #include <linux/list.h>
@@ -111,7 +115,7 @@ struct wiphy;
  * @IEEE80211_CHAN_16MHZ: 16 MHz bandwidth is permitted
  *	on this channel.
  * @IEEE80211_CHAN_NO_320MHZ: If the driver supports 320 MHz on the band,
- *	this flag indicates that an 320 MHz channel cannot use this
+ *	this flag indicates that a 320 MHz channel cannot use this
  *	channel as the control or any of the secondary channels.
  *	This may be due to the driver or due to regulatory bandwidth
  *	restrictions.
@@ -368,11 +372,29 @@ struct ieee80211_sta_he_cap {
 	u8 ppe_thres[IEEE80211_HE_PPE_THRES_MAX_LEN];
 };
 
-/*
- * (Max NSS * Max RU index * 6 bits for each entry) + header) / 8
- * (16 * 5 * 6 + 9) / 8 = 61
+/**
+ * struct ieee80211_eht_mcs_nss_supp - EHT max supported NSS per MCS
+ *
+ * See P802.11be_D1.3 Table 9-401k - "Subfields of the Supported EHT-MCS
+ * and NSS Set field"
+ *
+ * @only_20mhz: MCS/NSS support for 20 MHz-only STA.
+ * @bw._80: MCS/NSS support for BW <= 80 MHz
+ * @bw._160: MCS/NSS support for BW = 160 MHz
+ * @bw._320: MCS/NSS support for BW = 320 MHz
  */
-#define IEEE80211_EHT_PPE_THRES_MAX_LEN 61
+struct ieee80211_eht_mcs_nss_supp {
+	union {
+		struct ieee80211_eht_mcs_nss_supp_20mhz_only only_20mhz;
+		struct {
+			struct ieee80211_eht_mcs_nss_supp_bw _80;
+			struct ieee80211_eht_mcs_nss_supp_bw _160;
+			struct ieee80211_eht_mcs_nss_supp_bw _320;
+		} __packed bw;
+	} __packed;
+} __packed;
+
+#define IEEE80211_EHT_PPE_THRES_MAX_LEN		32
 
 /**
  * struct ieee80211_sta_eht_cap - STA's EHT capabilities
@@ -380,14 +402,14 @@ struct ieee80211_sta_he_cap {
  * This structure describes most essential parameters needed
  * to describe 802.11be EHT capabilities for a STA.
  *
- * @has_he: true iff HE data is valid.
+ * @has_eht: true iff EHT data is valid.
  * @eht_cap_elem: Fixed portion of the eht capabilities element.
  * @eht_mcs_nss_supp: The supported NSS/MCS combinations.
  * @eht_ppe_thres: Holds the PPE Thresholds data.
  */
 struct ieee80211_sta_eht_cap {
 	bool has_eht;
-	struct ieee80211_eht_cap_elem eht_cap_elem;
+	struct ieee80211_eht_cap_elem_fixed eht_cap_elem;
 	struct ieee80211_eht_mcs_nss_supp eht_mcs_nss_supp;
 	u8 eht_ppe_thres[IEEE80211_EHT_PPE_THRES_MAX_LEN];
 };
@@ -793,6 +815,22 @@ struct cfg80211_tid_config {
 };
 
 /**
+ * struct cfg80211_fils_aad - FILS AAD data
+ * @macaddr: STA MAC address
+ * @kek: FILS KEK
+ * @kek_len: FILS KEK length
+ * @snonce: STA Nonce
+ * @anonce: AP Nonce
+ */
+struct cfg80211_fils_aad {
+	const u8 *macaddr;
+	const u8 *kek;
+	u8 kek_len;
+	const u8 *snonce;
+	const u8 *anonce;
+};
+
+/**
  * cfg80211_get_chandef_type - return old channel type from chandef
  * @chandef: the channel definition
  *
@@ -1096,6 +1134,36 @@ struct cfg80211_crypto_settings {
 };
 
 /**
+ * struct cfg80211_mbssid_config - AP settings for multi bssid
+ *
+ * @tx_wdev: pointer to the transmitted interface in the MBSSID set
+ * @index: index of this AP in the multi bssid group.
+ * @ema: set to true if the beacons should be sent out in EMA mode.
+ */
+struct cfg80211_mbssid_config {
+	struct wireless_dev *tx_wdev;
+	u8 index;
+	bool ema;
+};
+
+/**
+ * struct cfg80211_mbssid_elems - Multiple BSSID elements
+ *
+ * @cnt: Number of elements in array %elems.
+ *
+ * @elem: Array of multiple BSSID element(s) to be added into Beacon frames.
+ * @elem.data: Data for multiple BSSID elements.
+ * @elem.len: Length of data.
+ */
+struct cfg80211_mbssid_elems {
+	u8 cnt;
+	struct {
+		const u8 *data;
+		size_t len;
+	} elem[];
+};
+
+/**
  * struct cfg80211_beacon_data - beacon data
  * @head: head portion of beacon (before TIM IE)
  *	or %NULL if not changed
@@ -1113,6 +1181,7 @@ struct cfg80211_crypto_settings {
  * @assocresp_ies_len: length of assocresp_ies in octets
  * @probe_resp_len: length of probe response template (@probe_resp)
  * @probe_resp: probe response template (AP mode only)
+ * @mbssid_ies: multiple BSSID elements
  * @ftm_responder: enable FTM responder functionality; -1 for no change
  *	(which also implies no change in LCI/civic location data)
  * @lci: Measurement Report element content, starting with Measurement Token
@@ -1130,6 +1199,7 @@ struct cfg80211_beacon_data {
 	const u8 *probe_resp;
 	const u8 *lci;
 	const u8 *civicloc;
+	struct cfg80211_mbssid_elems *mbssid_ies;
 	s8 ftm_responder;
 
 	size_t head_len, tail_len;
@@ -1195,17 +1265,6 @@ struct cfg80211_unsol_bcast_probe_resp {
 };
 
 /**
- * enum cfg80211_ap_settings_flags - AP settings flags
- *
- * Used by cfg80211_ap_settings
- *
- * @AP_SETTINGS_EXTERNAL_AUTH_SUPPORT: AP supports external authentication
- */
-enum cfg80211_ap_settings_flags {
-	AP_SETTINGS_EXTERNAL_AUTH_SUPPORT = BIT(0),
-};
-
-/**
  * struct cfg80211_ap_settings - AP configuration
  *
  * Used to configure an AP interface.
@@ -1248,6 +1307,7 @@ enum cfg80211_ap_settings_flags {
  * @he_oper: HE operation IE (or %NULL if HE isn't enabled)
  * @fils_discovery: FILS discovery transmission parameters
  * @unsol_bcast_probe_resp: Unsolicited broadcast probe response parameters
+ * @mbssid_config: AP settings for multiple bssid
  */
 struct cfg80211_ap_settings {
 	struct cfg80211_chan_def chandef;
@@ -1280,6 +1340,7 @@ struct cfg80211_ap_settings {
 	struct cfg80211_he_bss_color he_bss_color;
 	struct cfg80211_fils_discovery fils_discovery;
 	struct cfg80211_unsol_bcast_probe_resp unsol_bcast_probe_resp;
+	struct cfg80211_mbssid_config mbssid_config;
 };
 
 /**
@@ -1309,6 +1370,27 @@ struct cfg80211_csa_settings {
 	bool radar_required;
 	bool block_tx;
 	u8 count;
+};
+
+/**
+ * struct cfg80211_color_change_settings - color change settings
+ *
+ * Used for bss color change
+ *
+ * @beacon_color_change: beacon data while performing the color countdown
+ * @counter_offsets_beacon: offsets of the counters within the beacon (tail)
+ * @counter_offsets_presp: offsets of the counters within the probe response
+ * @beacon_next: beacon data to be used after the color change
+ * @count: number of beacons until the color change
+ * @color: the color used after the change
+ */
+struct cfg80211_color_change_settings {
+	struct cfg80211_beacon_data beacon_color_change;
+	u16 counter_offset_beacon;
+	u16 counter_offset_presp;
+	struct cfg80211_beacon_data beacon_next;
+	u8 count;
+	u8 color;
 };
 
 /**
@@ -1530,6 +1612,7 @@ int cfg80211_check_station_change(struct wiphy *wiphy,
  * @RATE_INFO_FLAGS_HE_MCS: HE MCS information
  * @RATE_INFO_FLAGS_EDMG: 60GHz MCS in EDMG mode
  * @RATE_INFO_FLAGS_EXTENDED_SC_DMG: 60GHz extended SC MCS
+ * @RATE_INFO_FLAGS_EHT_MCS: EHT MCS information
  */
 enum rate_info_flags {
 	RATE_INFO_FLAGS_MCS			= BIT(0),
@@ -1539,6 +1622,7 @@ enum rate_info_flags {
 	RATE_INFO_FLAGS_HE_MCS			= BIT(4),
 	RATE_INFO_FLAGS_EDMG			= BIT(5),
 	RATE_INFO_FLAGS_EXTENDED_SC_DMG		= BIT(6),
+	RATE_INFO_FLAGS_EHT_MCS			= BIT(7),
 };
 
 /**
@@ -1552,8 +1636,9 @@ enum rate_info_flags {
  * @RATE_INFO_BW_40: 40 MHz bandwidth
  * @RATE_INFO_BW_80: 80 MHz bandwidth
  * @RATE_INFO_BW_160: 160 MHz bandwidth
- * @RATE_INFO_BW_320: 320 MHz bandwidth
  * @RATE_INFO_BW_HE_RU: bandwidth determined by HE RU allocation
+ * @RATE_INFO_BW_320: 320 MHz bandwidth
+ * @RATE_INFO_BW_EHT_RU: bandwidth determined by EHT RU allocation
  */
 enum rate_info_bw {
 	RATE_INFO_BW_20 = 0,
@@ -1562,8 +1647,9 @@ enum rate_info_bw {
 	RATE_INFO_BW_40,
 	RATE_INFO_BW_80,
 	RATE_INFO_BW_160,
-	RATE_INFO_BW_320,
 	RATE_INFO_BW_HE_RU,
+	RATE_INFO_BW_320,
+	RATE_INFO_BW_EHT_RU,
 };
 
 /**
@@ -1581,6 +1667,9 @@ enum rate_info_bw {
  * @he_ru_alloc: HE RU allocation (from &enum nl80211_he_ru_alloc,
  *	only valid if bw is %RATE_INFO_BW_HE_RU)
  * @n_bonded_ch: In case of EDMG the number of bonded channels (1-4)
+ * @eht_gi: EHT guard interval (from &enum nl80211_eht_gi)
+ * @eht_ru_alloc: EHT RU allocation (from &enum nl80211_eht_ru_alloc,
+ *	only valid if bw is %RATE_INFO_BW_EHT_RU)
  */
 struct rate_info {
 	u8 flags;
@@ -1592,6 +1681,8 @@ struct rate_info {
 	u8 he_dcm;
 	u8 he_ru_alloc;
 	u8 n_bonded_ch;
+	u8 eht_gi;
+	u8 eht_ru_alloc;
 };
 
 /**
@@ -2609,7 +2700,7 @@ const struct element *ieee80211_bss_get_elem(struct cfg80211_bss *bss, u8 id);
  */
 static inline const u8 *ieee80211_bss_get_ie(struct cfg80211_bss *bss, u8 id)
 {
-	return (void *)ieee80211_bss_get_elem(bss, id);
+	return (const void *)ieee80211_bss_get_elem(bss, id);
 }
 
 
@@ -4066,6 +4157,21 @@ struct mgmt_frame_regs {
  *	given TIDs. This callback may sleep.
  *
  * @set_sar_specs: Update the SAR (TX power) settings.
+ *
+ * @color_change: Initiate a color change.
+ *
+ * @set_fils_aad: Set FILS AAD data to the AP driver so that the driver can use
+ *	those to decrypt (Re)Association Request and encrypt (Re)Association
+ *	Response frame.
+ *
+ * @set_radar_background: Configure dedicated offchannel chain available for
+ *	radar/CAC detection on some hw. This chain can't be used to transmit
+ *	or receive frames and it is bounded to a running wdev.
+ *	Background radar/CAC detection allows to avoid the CAC downtime
+ *	switching to a different channel during CAC detection on the selected
+ *	radar channel.
+ *	The caller is expected to set chandef pointer to NULL in order to
+ *	disable background CAC/radar detection.
  */
 struct cfg80211_ops {
 	int	(*suspend)(struct wiphy *wiphy, struct cfg80211_wowlan *wow);
@@ -4393,6 +4499,13 @@ struct cfg80211_ops {
 				    const u8 *peer, u8 tids);
 	int	(*set_sar_specs)(struct wiphy *wiphy,
 				 struct cfg80211_sar_specs *sar);
+	int	(*color_change)(struct wiphy *wiphy,
+				struct net_device *dev,
+				struct cfg80211_color_change_settings *params);
+	int     (*set_fils_aad)(struct wiphy *wiphy, struct net_device *dev,
+				struct cfg80211_fils_aad *fils_aad);
+	int	(*set_radar_background)(struct wiphy *wiphy,
+					struct cfg80211_chan_def *chandef);
 };
 
 /*
@@ -5026,13 +5139,20 @@ struct wiphy_iftype_akm_suites {
  *	%NL80211_TID_CONFIG_ATTR_RETRY_LONG attributes
  * @sar_capa: SAR control capabilities
  * @rfkill: a pointer to the rfkill structure
+ *
+ * @mbssid_max_interfaces: maximum number of interfaces supported by the driver
+ *	in a multiple BSSID set. This field must be set to a non-zero value
+ *	by the driver to advertise MBSSID support.
+ * @ema_max_profile_periodicity: maximum profile periodicity supported by
+ *	the driver. Setting this field to a non-zero value indicates that the
+ *	driver supports enhanced multi-BSSID advertisements (EMA AP).
  */
 struct wiphy {
 	struct mutex mtx;
 
 	/* assign these fields before you register the wiphy */
 
-#define WIPHY_COMPAT_PAD_SIZE	2304
+#define WIPHY_COMPAT_PAD_SIZE	2560
 	u8 padding[WIPHY_COMPAT_PAD_SIZE];
 
 	u8 perm_addr[ETH_ALEN];
@@ -5173,17 +5293,20 @@ struct wiphy {
 
 	struct rfkill *rfkill;
 
+	u8 mbssid_max_interfaces;
+	u8 ema_max_profile_periodicity;
+
 	char priv[] __aligned(NETDEV_ALIGN);
 };
 
 static inline struct net *wiphy_net(struct wiphy *wiphy)
 {
-	return possible_read_pnet(&wiphy->_net);
+	return read_pnet(&wiphy->_net);
 }
 
 static inline void wiphy_net_set(struct wiphy *wiphy, struct net *net)
 {
-	possible_write_pnet(&wiphy->_net, net);
+	write_pnet(&wiphy->_net, net);
 }
 
 /**
@@ -5424,7 +5547,6 @@ static inline void wiphy_unlock(struct wiphy *wiphy)
  *	netdev and may otherwise be used by driver read-only, will be update
  *	by cfg80211 on change_interface
  * @mgmt_registrations: list of registrations for management frames
- * @mgmt_registrations_lock: lock for the list
  * @mgmt_registrations_need_update: mgmt registrations were updated,
  *	need to propagate the update to the driver
  * @mtx: mutex used to lock data in this struct, may be used by drivers
@@ -5471,7 +5593,6 @@ struct wireless_dev {
 	u32 identifier;
 
 	struct list_head mgmt_registrations;
-	spinlock_t mgmt_registrations_lock;
 	u8 mgmt_registrations_need_update:1;
 
 	struct mutex mtx;
@@ -5540,7 +5661,7 @@ struct wireless_dev {
 	unsigned long unprot_beacon_reported;
 };
 
-static inline u8 *wdev_address(struct wireless_dev *wdev)
+static inline const u8 *wdev_address(struct wireless_dev *wdev)
 {
 	if (wdev->netdev)
 		return wdev->netdev->dev_addr;
@@ -5954,9 +6075,9 @@ cfg80211_find_ie_match(u8 eid, const u8 *ies, unsigned int len,
 		    (!match_len && match_offset)))
 		return NULL;
 
-	return (void *)cfg80211_find_elem_match(eid, ies, len,
-						match, match_len,
-						match_offset ?
+	return (const void *)cfg80211_find_elem_match(eid, ies, len,
+						      match, match_len,
+						      match_offset ?
 							match_offset - 2 : 0);
 }
 
@@ -6083,7 +6204,7 @@ static inline const u8 *
 cfg80211_find_vendor_ie(unsigned int oui, int oui_type,
 			const u8 *ies, unsigned int len)
 {
-	return (void *)cfg80211_find_vendor_elem(oui, oui_type, ies, len);
+	return (const void *)cfg80211_find_vendor_elem(oui, oui_type, ies, len);
 }
 
 /**
@@ -6392,6 +6513,19 @@ enum cfg80211_bss_frame_type {
 	CFG80211_BSS_FTYPE_BEACON,
 	CFG80211_BSS_FTYPE_PRESP,
 };
+
+/**
+ * cfg80211_get_ies_channel_number - returns the channel number from ies
+ * @ie: IEs
+ * @ielen: length of IEs
+ * @band: enum nl80211_band of the channel
+ * @ftype: frame type
+ *
+ * Returns the channel number, or -1 if none could be determined.
+ */
+int cfg80211_get_ies_channel_number(const u8 *ie, size_t ielen,
+				    enum nl80211_band band,
+				    enum cfg80211_bss_frame_type ftype);
 
 /**
  * cfg80211_inform_bss_data - inform cfg80211 of a new BSS
@@ -7567,15 +7701,33 @@ void cfg80211_cqm_txe_notify(struct net_device *dev, const u8 *peer,
 void cfg80211_cqm_beacon_loss_notify(struct net_device *dev, gfp_t gfp);
 
 /**
- * cfg80211_radar_event - radar detection event
+ * __cfg80211_radar_event - radar detection event
  * @wiphy: the wiphy
  * @chandef: chandef for the current channel
+ * @offchan: the radar has been detected on the offchannel chain
  * @gfp: context flags
  *
  * This function is called when a radar is detected on the current chanenl.
  */
-void cfg80211_radar_event(struct wiphy *wiphy,
-			  struct cfg80211_chan_def *chandef, gfp_t gfp);
+void __cfg80211_radar_event(struct wiphy *wiphy,
+			    struct cfg80211_chan_def *chandef,
+			    bool offchan, gfp_t gfp);
+
+static inline void
+cfg80211_radar_event(struct wiphy *wiphy,
+		     struct cfg80211_chan_def *chandef,
+		     gfp_t gfp)
+{
+	__cfg80211_radar_event(wiphy, chandef, false, gfp);
+}
+
+static inline void
+cfg80211_background_radar_event(struct wiphy *wiphy,
+				struct cfg80211_chan_def *chandef,
+				gfp_t gfp)
+{
+	__cfg80211_radar_event(wiphy, chandef, true, gfp);
+}
 
 /**
  * cfg80211_sta_opmode_change_notify - STA's ht/vht operation mode change event
@@ -7606,6 +7758,14 @@ void cfg80211_cac_event(struct net_device *netdev,
 			const struct cfg80211_chan_def *chandef,
 			enum nl80211_radar_event event, gfp_t gfp);
 
+/**
+ * cfg80211_background_cac_abort - Channel Availability Check offchan abort event
+ * @wiphy: the wiphy
+ *
+ * This function is called by the driver when a Channel Availability Check
+ * (CAC) is aborted by a offchannel dedicated chain.
+ */
+void cfg80211_background_cac_abort(struct wiphy *wiphy);
 
 /**
  * cfg80211_gtk_rekey_notify - notify userspace about driver rekeying
@@ -8303,5 +8463,71 @@ void cfg80211_update_owe_info_event(struct net_device *netdev,
  * @wiphy: the wiphy
  */
 void cfg80211_bss_flush(struct wiphy *wiphy);
+
+/**
+ * cfg80211_bss_color_notify - notify about bss color event
+ * @dev: network device
+ * @gfp: allocation flags
+ * @cmd: the actual event we want to notify
+ * @count: the number of TBTTs until the color change happens
+ * @color_bitmap: representations of the colors that the local BSS is aware of
+ */
+int cfg80211_bss_color_notify(struct net_device *dev, gfp_t gfp,
+			      enum nl80211_commands cmd, u8 count,
+			      u64 color_bitmap);
+
+/**
+ * cfg80211_obss_color_collision_notify - notify about bss color collision
+ * @dev: network device
+ * @color_bitmap: representations of the colors that the local BSS is aware of
+ */
+static inline int cfg80211_obss_color_collision_notify(struct net_device *dev,
+						       u64 color_bitmap)
+{
+	return cfg80211_bss_color_notify(dev, GFP_KERNEL,
+					 NL80211_CMD_OBSS_COLOR_COLLISION,
+					 0, color_bitmap);
+}
+
+/**
+ * cfg80211_color_change_started_notify - notify color change start
+ * @dev: the device on which the color is switched
+ * @count: the number of TBTTs until the color change happens
+ *
+ * Inform the userspace about the color change that has started.
+ */
+static inline int cfg80211_color_change_started_notify(struct net_device *dev,
+						       u8 count)
+{
+	return cfg80211_bss_color_notify(dev, GFP_KERNEL,
+					 NL80211_CMD_COLOR_CHANGE_STARTED,
+					 count, 0);
+}
+
+/**
+ * cfg80211_color_change_aborted_notify - notify color change abort
+ * @dev: the device on which the color is switched
+ *
+ * Inform the userspace about the color change that has aborted.
+ */
+static inline int cfg80211_color_change_aborted_notify(struct net_device *dev)
+{
+	return cfg80211_bss_color_notify(dev, GFP_KERNEL,
+					 NL80211_CMD_COLOR_CHANGE_ABORTED,
+					 0, 0);
+}
+
+/**
+ * cfg80211_color_change_notify - notify color change completion
+ * @dev: the device on which the color was switched
+ *
+ * Inform the userspace about the color change that has completed.
+ */
+static inline int cfg80211_color_change_notify(struct net_device *dev)
+{
+	return cfg80211_bss_color_notify(dev, GFP_KERNEL,
+					 NL80211_CMD_COLOR_CHANGE_COMPLETED,
+					 0, 0);
+}
 
 #endif /* __NET_CFG80211_H */

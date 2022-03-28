@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
  * Copyright (C) 2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2021 Intel Corporation
+ * Copyright (C) 2018-2022 Intel Corporation
  */
 #include "rs.h"
 #include "fw-api.h"
@@ -99,7 +99,10 @@ static u16 rs_fw_get_config_flags(struct iwl_mvm *mvm,
 
 	if (he_cap->has_he &&
 	    (he_cap->he_cap_elem.phy_cap_info[3] &
-	     IEEE80211_HE_PHY_CAP3_DCM_MAX_CONST_RX_MASK))
+	     IEEE80211_HE_PHY_CAP3_DCM_MAX_CONST_RX_MASK &&
+	     sband->iftype_data &&
+	     sband->iftype_data->he_cap.he_cap_elem.phy_cap_info[3] &
+	     IEEE80211_HE_PHY_CAP3_DCM_MAX_CONST_TX_MASK))
 		flags |= IWL_TLC_MNG_CFG_FLAGS_HE_DCM_NSS_1_MSK;
 
 	return flags;
@@ -264,16 +267,16 @@ static void rs_fw_set_eht_mcs_nss(__le16 ht_rates[][3],
 
 static const
 struct ieee80211_eht_mcs_nss_supp_bw *
-rs_fw_rs_mcs2eth_mcs(enum IWL_TLC_MCS_PER_BW bw,
-		     const struct ieee80211_eht_mcs_nss_supp *eth_mcs)
+rs_fw_rs_mcs2eht_mcs(enum IWL_TLC_MCS_PER_BW bw,
+		     const struct ieee80211_eht_mcs_nss_supp *eht_mcs)
 {
 	switch (bw) {
 	case IWL_TLC_MCS_PER_BW_80:
-		return &eth_mcs->bw_80;
+		return &eht_mcs->bw._80;
 	case IWL_TLC_MCS_PER_BW_160:
-		return &eth_mcs->bw_160;
+		return &eht_mcs->bw._160;
 	case IWL_TLC_MCS_PER_BW_320:
-		return &eth_mcs->bw_320;
+		return &eht_mcs->bw._320;
 	default:
 		return NULL;
 	}
@@ -284,10 +287,10 @@ static void rs_fw_eht_set_enabled_rates(const struct ieee80211_sta *sta,
 					struct iwl_tlc_config_cmd_v4 *cmd)
 {
 	/* peer RX mcs capa */
-	const struct ieee80211_eht_mcs_nss_supp *eth_rx_mcs =
+	const struct ieee80211_eht_mcs_nss_supp *eht_rx_mcs =
 		&sta->eht_cap.eht_mcs_nss_supp;
 	/* our TX mcs capa */
-	const struct ieee80211_eht_mcs_nss_supp *eth_tx_mcs =
+	const struct ieee80211_eht_mcs_nss_supp *eht_tx_mcs =
 		&sband->iftype_data->eht_cap.eht_mcs_nss_supp;
 
 	enum IWL_TLC_MCS_PER_BW bw;
@@ -297,23 +300,23 @@ static void rs_fw_eht_set_enabled_rates(const struct ieee80211_sta *sta,
 	/* peer is 20Mhz only */
 	if (!(sta->he_cap.he_cap_elem.phy_cap_info[0] &
 	      IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_MASK_ALL)) {
-		mcs_rx_20 = eth_rx_mcs->only_20mhz;
+		mcs_rx_20 = eht_rx_mcs->only_20mhz;
 	} else {
-		mcs_rx_20.rx_tx_mcs7_max_nss = eth_rx_mcs->bw_80.rx_tx_mcs9_max_nss;
-		mcs_rx_20.rx_tx_mcs9_max_nss = eth_rx_mcs->bw_80.rx_tx_mcs9_max_nss;
-		mcs_rx_20.rx_tx_mcs11_max_nss = eth_rx_mcs->bw_80.rx_tx_mcs11_max_nss;
-		mcs_rx_20.rx_tx_mcs13_max_nss = eth_rx_mcs->bw_80.rx_tx_mcs13_max_nss;
+		mcs_rx_20.rx_tx_mcs7_max_nss = eht_rx_mcs->bw._80.rx_tx_mcs9_max_nss;
+		mcs_rx_20.rx_tx_mcs9_max_nss = eht_rx_mcs->bw._80.rx_tx_mcs9_max_nss;
+		mcs_rx_20.rx_tx_mcs11_max_nss = eht_rx_mcs->bw._80.rx_tx_mcs11_max_nss;
+		mcs_rx_20.rx_tx_mcs13_max_nss = eht_rx_mcs->bw._80.rx_tx_mcs13_max_nss;
 	}
 
 	/* nic is 20Mhz only */
 	if (!(sband->iftype_data->he_cap.he_cap_elem.phy_cap_info[0] &
 	      IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_MASK_ALL)) {
-		mcs_tx_20 = eth_tx_mcs->only_20mhz;
+		mcs_tx_20 = eht_tx_mcs->only_20mhz;
 	} else {
-		mcs_tx_20.rx_tx_mcs7_max_nss = eth_tx_mcs->bw_80.rx_tx_mcs9_max_nss;
-		mcs_tx_20.rx_tx_mcs9_max_nss = eth_tx_mcs->bw_80.rx_tx_mcs9_max_nss;
-		mcs_tx_20.rx_tx_mcs11_max_nss = eth_tx_mcs->bw_80.rx_tx_mcs11_max_nss;
-		mcs_tx_20.rx_tx_mcs13_max_nss = eth_tx_mcs->bw_80.rx_tx_mcs13_max_nss;
+		mcs_tx_20.rx_tx_mcs7_max_nss = eht_tx_mcs->bw._80.rx_tx_mcs9_max_nss;
+		mcs_tx_20.rx_tx_mcs9_max_nss = eht_tx_mcs->bw._80.rx_tx_mcs9_max_nss;
+		mcs_tx_20.rx_tx_mcs11_max_nss = eht_tx_mcs->bw._80.rx_tx_mcs11_max_nss;
+		mcs_tx_20.rx_tx_mcs13_max_nss = eht_tx_mcs->bw._80.rx_tx_mcs13_max_nss;
 	}
 
 	/* rates for 20/40/80 bw */
@@ -330,9 +333,9 @@ static void rs_fw_eht_set_enabled_rates(const struct ieee80211_sta *sta,
 	/* rate for 160/320 bw */
 	for (bw = IWL_TLC_MCS_PER_BW_160; bw <= IWL_TLC_MCS_PER_BW_320; bw++) {
 		const struct ieee80211_eht_mcs_nss_supp_bw *mcs_rx =
-			rs_fw_rs_mcs2eth_mcs(bw, eth_rx_mcs);
+			rs_fw_rs_mcs2eht_mcs(bw, eht_rx_mcs);
 		const struct ieee80211_eht_mcs_nss_supp_bw *mcs_tx =
-			rs_fw_rs_mcs2eth_mcs(bw, eth_tx_mcs);
+			rs_fw_rs_mcs2eht_mcs(bw, eht_tx_mcs);
 
 		/* got unsuppored index for bw */
 		if (!mcs_rx || !mcs_tx)
@@ -435,18 +438,19 @@ void iwl_mvm_tlc_update_notif(struct iwl_mvm *mvm,
 	if (flags & IWL_TLC_NOTIF_FLAG_RATE) {
 		char pretty_rate[100];
 
-	if (iwl_fw_lookup_notif_ver(mvm->fw, DATA_PATH_GROUP,
-				    TLC_MNG_UPDATE_NOTIF, 0) < 3) {
-		rs_pretty_print_rate_v1(pretty_rate, sizeof(pretty_rate),
-					le32_to_cpu(notif->rate));
-		IWL_DEBUG_RATE(mvm,
-			       "Got rate in old format. Rate: %s. Converting.\n",
-			       pretty_rate);
-		lq_sta->last_rate_n_flags =
-			iwl_new_rate_from_v1(le32_to_cpu(notif->rate));
-	} else {
-		lq_sta->last_rate_n_flags = le32_to_cpu(notif->rate);
-	}
+		if (iwl_fw_lookup_notif_ver(mvm->fw, DATA_PATH_GROUP,
+					    TLC_MNG_UPDATE_NOTIF, 0) < 3) {
+			rs_pretty_print_rate_v1(pretty_rate,
+						sizeof(pretty_rate),
+						le32_to_cpu(notif->rate));
+			IWL_DEBUG_RATE(mvm,
+				       "Got rate in old format. Rate: %s. Converting.\n",
+				       pretty_rate);
+			lq_sta->last_rate_n_flags =
+				iwl_new_rate_from_v1(le32_to_cpu(notif->rate));
+		} else {
+			lq_sta->last_rate_n_flags = le32_to_cpu(notif->rate);
+		}
 		rs_pretty_print_rate(pretty_rate, sizeof(pretty_rate),
 				     lq_sta->last_rate_n_flags);
 		IWL_DEBUG_RATE(mvm, "new rate: %s\n", pretty_rate);
@@ -496,7 +500,7 @@ int iwl_rs_send_dhc(struct iwl_mvm *mvm, u8 sta_id, u32 type, u32 data)
 	int ret;
 	struct iwl_dhc_cmd *dhc_cmd;
 	struct iwl_dhc_tlc_cmd *dhc_tlc_cmd;
-	u32 cmd_id = iwl_cmd_id(DEBUG_HOST_COMMAND, IWL_ALWAYS_LONG_GROUP, 0);
+	u32 cmd_id = WIDE_ID(IWL_ALWAYS_LONG_GROUP, DEBUG_HOST_COMMAND);
 
 	dhc_cmd = kzalloc(sizeof(*dhc_cmd) + sizeof(*dhc_tlc_cmd), GFP_KERNEL);
 	if (!dhc_cmd)
@@ -569,7 +573,7 @@ void rs_fw_rate_init(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 	struct ieee80211_hw *hw = mvm->hw;
 	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
 	struct iwl_lq_sta_rs_fw *lq_sta = &mvmsta->lq_sta.rs_fw;
-	u32 cmd_id = iwl_cmd_id(TLC_MNG_CONFIG_CMD, DATA_PATH_GROUP, 0);
+	u32 cmd_id = WIDE_ID(DATA_PATH_GROUP, TLC_MNG_CONFIG_CMD);
 	struct ieee80211_supported_band *sband = hw->wiphy->bands[band];
 	u16 max_amsdu_len = rs_fw_get_max_amsdu_len(sta);
 	struct iwl_tlc_config_cmd_v4 cfg_cmd = {
@@ -611,8 +615,22 @@ void rs_fw_rate_init(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 	 */
 	sta->max_amsdu_len = max_amsdu_len;
 
-	cmd_ver = iwl_fw_lookup_cmd_ver(mvm->fw, DATA_PATH_GROUP,
-					TLC_MNG_CONFIG_CMD, 0);
+	cmd_ver = iwl_fw_lookup_cmd_ver(mvm->fw,
+					WIDE_ID(DATA_PATH_GROUP,
+						TLC_MNG_CONFIG_CMD),
+					0);
+	IWL_DEBUG_RATE(mvm, "TLC CONFIG CMD, sta_id=%d, max_ch_width=%d, mode=%d\n",
+		       cfg_cmd.sta_id, cfg_cmd.max_ch_width, cfg_cmd.mode);
+	IWL_DEBUG_RATE(mvm, "TLC CONFIG CMD, chains=0x%X, ch_wid_supp=%d, flags=0x%X\n",
+		       cfg_cmd.chains, cfg_cmd.sgi_ch_width_supp, cfg_cmd.flags);
+	IWL_DEBUG_RATE(mvm, "TLC CONFIG CMD, mpdu_len=%d, no_ht_rate=0x%X, tx_op=%d\n",
+		       cfg_cmd.max_mpdu_len, cfg_cmd.non_ht_rates, cfg_cmd.max_tx_op);
+	IWL_DEBUG_RATE(mvm, "TLC CONFIG CMD, ht_rate[0][0]=0x%X, ht_rate[1][0]=0x%X\n",
+		       cfg_cmd.ht_rates[0][0], cfg_cmd.ht_rates[1][0]);
+	IWL_DEBUG_RATE(mvm, "TLC CONFIG CMD, ht_rate[0][1]=0x%X, ht_rate[1][1]=0x%X\n",
+		       cfg_cmd.ht_rates[0][1], cfg_cmd.ht_rates[1][1]);
+	IWL_DEBUG_RATE(mvm, "TLC CONFIG CMD, ht_rate[0][2]=0x%X, ht_rate[1][2]=0x%X\n",
+		       cfg_cmd.ht_rates[0][2], cfg_cmd.ht_rates[1][2]);
 	if (cmd_ver == 4) {
 		ret = iwl_mvm_send_cmd_pdu(mvm, cmd_id, CMD_ASYNC,
 					   sizeof(cfg_cmd), &cfg_cmd);
@@ -636,8 +654,9 @@ void rs_fw_rate_init(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 		u16 cmd_size = sizeof(cfg_cmd_v3);
 
 		/* In old versions of the API the struct is 4 bytes smaller */
-		if (iwl_fw_lookup_cmd_ver(mvm->fw, DATA_PATH_GROUP,
-					  TLC_MNG_CONFIG_CMD, 0) < 3)
+		if (iwl_fw_lookup_cmd_ver(mvm->fw,
+					  WIDE_ID(DATA_PATH_GROUP,
+						  TLC_MNG_CONFIG_CMD), 0) < 3)
 			cmd_size -= 4;
 
 		ret = iwl_mvm_send_cmd_pdu(mvm, cmd_id, CMD_ASYNC, cmd_size,

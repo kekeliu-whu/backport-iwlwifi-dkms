@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2013-2015, 2018-2021 Intel Corporation
+ * Copyright (C) 2013-2015, 2018-2022 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  */
 #if !defined(__IWL_DBG_CFG_H__) || defined(DBG_CFG_REINCLUDE)
@@ -45,7 +45,7 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG_NODEF(bool, disable_wrt_dump)
 	IWL_DBG_CFG_NODEF(bool, disable_52GHz)
 	IWL_DBG_CFG_NODEF(bool, disable_24GHz)
-#if IS_ENABLED(CPTCFG_IWLMVM) || IS_ENABLED(CPTCFG_IWLFMAC)
+#if IS_ENABLED(CPTCFG_IWLMVM)
 	IWL_DBG_CFG_NODEF(u32, MVM_CALIB_OVERRIDE_CONTROL)
 	IWL_DBG_CFG_NODEF(u32, MVM_CALIB_INIT_FLOW)
 	IWL_DBG_CFG_NODEF(u32, MVM_CALIB_INIT_EVENT)
@@ -180,6 +180,9 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG_NODEF(u32, system_features_control_2)
 	IWL_DBG_CFG_NODEF(u32, system_features_control_3)
 	IWL_DBG_CFG_NODEF(u32, system_features_control_4)
+	IWL_DBG_CFG(bool, MVM_MEI_REPORT_RFKILL)
+	IWL_DBG_CFG(u8, MVM_MIN_BEACON_INTERVAL_TU)
+	IWL_DBG_CFG_RANGE(u8, MVM_ADAPTIVE_DWELL_NUM_APS_OVERRIDE, 0, 10)
 #endif /* CPTCFG_IWLMVM */
 #ifdef CPTCFG_IWLWIFI_DEVICE_TESTMODE
 	IWL_DBG_CFG_NODEF(u32, dnt_out_mode)
@@ -258,7 +261,7 @@ struct iwl_dbg_cfg {
 	IWL_MOD_PARAM(int, amsdu_size)
 	IWL_MOD_PARAM(int, swcrypto)
 	IWL_MOD_PARAM(uint, disable_11n)
-	IWL_MOD_PARAM(bool, enable_ini)
+	IWL_MOD_PARAM(u32, enable_ini)
 	IWL_DBG_CFG_BIN(he_ppe_thres)
 	IWL_DBG_CFG_NODEF(u8, he_chan_width_dis)
 	IWL_DBG_CFG_NODEF(u32, vht_cap_flip)

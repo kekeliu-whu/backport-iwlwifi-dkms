@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2012-2014, 2018-2021 Intel Corporation
+ * Copyright (C) 2012-2014, 2018-2022 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -8,6 +8,16 @@
 #define __iwl_fw_api_scan_h__
 
 /* Scan Commands, Responses, Notifications */
+
+/**
+ * enum iwl_scan_subcmd_ids - scan commands
+ */
+enum iwl_scan_subcmd_ids {
+	/**
+	 * @OFFLOAD_MATCH_INFO_NOTIF: &struct iwl_scan_offload_match_info
+	 */
+	OFFLOAD_MATCH_INFO_NOTIF = 0xFC,
+};
 
 /* Max number of IEs for direct SSID scans in a command */
 #define PROBE_OPTION_MAX		20
@@ -212,7 +222,7 @@ struct iwl_scan_channel_cfg_lmac {
 	__le32 iter_interval;
 } __packed;
 
-/*
+/**
  * struct iwl_scan_probe_segment - PROBE_SEGMENT_API_S_VER_1
  * @offset: offset in the data block
  * @len: length of the segment
@@ -222,7 +232,8 @@ struct iwl_scan_probe_segment {
 	__le16 len;
 } __packed;
 
-/* iwl_scan_probe_req - PROBE_REQUEST_FRAME_API_S_VER_2
+/**
+ * struct iwl_scan_probe_req_v1 - PROBE_REQUEST_FRAME_API_S_VER_2
  * @mac_header: first (and common) part of the probe
  * @band_data: band specific data
  * @common_data: last (and common) part of the probe
@@ -235,7 +246,8 @@ struct iwl_scan_probe_req_v1 {
 	u8 buf[SCAN_OFFLOAD_PROBE_REQ_SIZE];
 } __packed;
 
-/* iwl_scan_probe_req - PROBE_REQUEST_FRAME_API_S_VER_v2
+/**
+ * struct iwl_scan_probe_req - PROBE_REQUEST_FRAME_API_S_VER_v2
  * @mac_header: first (and common) part of the probe
  * @band_data: band specific data
  * @common_data: last (and common) part of the probe
@@ -258,7 +270,8 @@ enum iwl_scan_channel_flags {
 	IWL_SCAN_CHANNEL_FLAG_6G_PSC_NO_FILTER  = BIT(6),
 };
 
-/* struct iwl_scan_channel_opt - CHANNEL_OPTIMIZATION_API_S
+/**
+ * struct iwl_scan_channel_opt - CHANNEL_OPTIMIZATION_API_S
  * @flags: enum iwl_scan_channel_flags
  * @non_ebs_ratio: defines the ratio of number of scan iterations where EBS is
  *	involved.
@@ -503,7 +516,7 @@ struct iwl_scan_dwell {
 } __packed;
 
 /**
- * struct iwl_scan_config_v1
+ * struct iwl_scan_config_v1 - scan configuration command
  * @flags:			enum scan_config_flags
  * @tx_chains:			valid_tx antenna - ANT_* definitions
  * @rx_chains:			valid_rx antenna - ANT_* definitions
@@ -535,6 +548,21 @@ struct iwl_scan_config_v1 {
 #define SCAN_LB_LMAC_IDX 0
 #define SCAN_HB_LMAC_IDX 1
 
+/**
+ * struct iwl_scan_config_v2 - scan configuration command
+ * @flags:			enum scan_config_flags
+ * @tx_chains:			valid_tx antenna - ANT_* definitions
+ * @rx_chains:			valid_rx antenna - ANT_* definitions
+ * @legacy_rates:		default legacy rates - enum scan_config_rates
+ * @out_of_channel_time:	default max out of serving channel time
+ * @suspend_time:		default max suspend time
+ * @dwell:			dwells for the scan
+ * @mac_addr:			default mac address to be used in probes
+ * @bcast_sta_id:		the index of the station in the fw
+ * @channel_flags:		default channel flags - enum iwl_channel_flags
+ *				scan_config_channel_flag
+ * @channel_array:		default supported channels
+ */
 struct iwl_scan_config_v2 {
 	__le32 flags;
 	__le32 tx_chains;
@@ -550,7 +578,7 @@ struct iwl_scan_config_v2 {
 } __packed; /* SCAN_CONFIG_DB_CMD_API_S_2 */
 
 /**
- * struct iwl_scan_config
+ * struct iwl_scan_config - scan configuration command
  * @enable_cam_mode: whether to enable CAM mode.
  * @enable_promiscouos_mode: whether to enable promiscouos mode
  * @bcast_sta_id: the index of the station in the fw. Deprecated starting with
@@ -1171,7 +1199,7 @@ struct iwl_scan_offload_profile_match {
 } __packed; /* SCAN_OFFLOAD_PROFILE_MATCH_RESULTS_S_VER_2 */
 
 /**
- * struct iwl_scan_offload_profiles_query - match results query response
+ * struct iwl_scan_offload_match_info - match results information
  * @matched_profiles: bitmap of matched profiles, referencing the
  *	matches passed in the scan offload request
  * @last_scan_age: age of the last offloaded scan
@@ -1183,7 +1211,7 @@ struct iwl_scan_offload_profile_match {
  * @reserved: reserved
  * @matches: array of match information, one for each match
  */
-struct iwl_scan_offload_profiles_query {
+struct iwl_scan_offload_match_info {
 	__le32 matched_profiles;
 	__le32 last_scan_age;
 	__le32 n_scans_done;
@@ -1193,7 +1221,9 @@ struct iwl_scan_offload_profiles_query {
 	u8 self_recovery;
 	__le16 reserved;
 	struct iwl_scan_offload_profile_match matches[0];
-} __packed; /* SCAN_OFFLOAD_PROFILES_QUERY_RSP_S_VER_3 */
+} __packed; /* SCAN_OFFLOAD_PROFILES_QUERY_RSP_S_VER_3 and
+	     * SCAN_OFFLOAD_MATCH_INFO_NOTIFICATION_S_VER_1
+	     */
 
 /**
  * struct iwl_umac_scan_iter_complete_notif - notifies end of scanning iteration
