@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (C) 2021 Intel Corporation
+ * Copyright (C) 2021 - 2022 Intel Corporation
  */
 
 #ifndef __iwl_mei_h__
@@ -110,6 +110,40 @@
  */
 
 /**
+ * DOC: CSME behavior regarding the ownership requests
+ *
+ * The ownership requests from the host can come in two different ways:
+ *  - the HW registers in iwl_pcie_set_hw_ready
+ *  - using the Software Arbitration Protocol (SAP)
+ *
+ * The host can ask CSME who owns the device with %SAP_MSG_NOTIF_WHO_OWNS_NIC,
+ * and it can request ownership with %SAP_MSG_NOTIF_HOST_ASKS_FOR_NIC_OWNERSHIP.
+ * The host will first use %SAP_MSG_NOTIF_WHO_OWNS_NIC to know what state
+ * CSME is in. In case CSME thinks it owns the device, the host can ask for
+ * ownership with %SAP_MSG_NOTIF_HOST_ASKS_FOR_NIC_OWNERSHIP.
+ *
+ * Here the table that describes CSME's behavior upon ownership request:
+ *
+ * +-------------------+------------+--------------+-----------------------------+------------+
+ * | State             | HW reg bit | Reply for    | Event                       | HW reg bit |
+ * |                   | before     | WHO_OWNS_NIC |                             | after      |
+ * +===================+============+==============+=============================+============+
+ * | WiAMT not         | 0          | Host         | HW register or              | 0          |
+ * | operational       | Host owner |              | HOST_ASKS_FOR_NIC_OWNERSHIP | Host owner |
+ * +-------------------+------------+--------------+-----------------------------+------------+
+ * | Operational &     | 1          | N/A          | HW register                 | 0          |
+ * | SAP down &        | CSME owner |              |                             | Host owner |
+ * | no session active |            |              |                             |            |
+ * +-------------------+------------+--------------+-----------------------------+------------+
+ * | Operational &     | 1          | CSME         | HW register                 | 1          |
+ * | SAP up            | CSME owner |              |                             | CSME owner |
+ * +-------------------+------------+--------------+-----------------------------+------------+
+ * | Operational &     | 1          | CSME         | HOST_ASKS_FOR_NIC_OWNERSHIP | 0          |
+ * | SAP up            | CSME owner |              |                             | Host owner |
+ * +-------------------+------------+--------------+-----------------------------+------------+
+ */
+
+/**
  * DOC: Driver load when CSME is associated and a session is active
  *
  * A "session" is active when CSME is associated to an access point and the
@@ -189,6 +223,8 @@ struct iwl_mei_nvm {
  * @IWL_MEI_CIPHER_CCMP: ccmp
  * @IWL_MEI_CIPHER_GCMP: gcmp
  * @IWL_MEI_CIPHER_GCMP_256: gcmp 256
+ *
+ * Note that those values are dictated by the CSME firmware API (see sap.h)
  */
 enum iwl_mei_pairwise_cipher {
 	IWL_MEI_CIPHER_NONE	= 0,
@@ -203,6 +239,8 @@ enum iwl_mei_pairwise_cipher {
  * @IWL_MEI_AKM_AUTH_RSNA: 1X profile
  * @IWL_MEI_AKM_AUTH_RSNA_PSK: PSK profile
  * @IWL_MEI_AKM_AUTH_SAE: SAE profile
+ *
+ * Note that those values are dictated by the CSME firmware API (see sap.h)
  */
 enum iwl_mei_akm_auth {
 	IWL_MEI_AKM_AUTH_OPEN		= 0,
@@ -261,7 +299,7 @@ struct iwl_mei_colloc_info {
 struct iwl_mei_ops {
 	void (*me_conn_status)(void *priv,
 			       const struct iwl_mei_conn_info *conn_info);
-	void (*rfkill)(void *priv, bool blocked);
+	void (*rfkill)(void *priv, bool blocked, bool csme_taking_ownership);
 	void (*roaming_forbidden)(void *priv, bool forbidden);
 	void (*sap_connected)(void *priv);
 	void (*nic_stolen)(void *priv);

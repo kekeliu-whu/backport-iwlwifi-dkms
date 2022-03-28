@@ -2,8 +2,6 @@
 /*
  * Copyright (C) 2018 - 2021 Intel Corporation
  */
-#ifndef __PMSR_H
-#define __PMSR_H
 #include <net/cfg80211.h>
 #include "core.h"
 #include "nl80211.h"
@@ -327,7 +325,7 @@ int nl80211_pmsr_start(struct sk_buff *skb, struct genl_info *info)
 
 	req->n_peers = count;
 	req->cookie = cfg80211_assign_cookie(rdev);
-	req->nl_portid = genl_info_snd_portid(info);
+	req->nl_portid = info->snd_portid;
 
 	err = rdev_start_pmsr(rdev, wdev, req);
 	if (err)
@@ -662,5 +660,3 @@ void cfg80211_release_pmsr(struct wireless_dev *wdev, u32 portid)
 	}
 	spin_unlock_bh(&wdev->pmsr_lock);
 }
-
-#endif /* __PMSR_H */
